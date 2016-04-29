@@ -6,7 +6,6 @@ import org.glassfish.jersey.server.model.Resource;
 import org.glassfish.jersey.server.model.ResourceMethod;
 
 import javax.sql.DataSource;
-import javax.ws.rs.Path;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.MediaType;
 import java.sql.*;
@@ -15,15 +14,14 @@ import java.util.*;
 /**
  * Created by parth on 30/4/16.
  */
-@Path("crud")
-public class Controller extends AbstractController {
+public class SchemaController extends AbstractController {
 
     @Override
     protected Integer getTotalCount() throws SQLException {
         return tableNames.size();
     }
 
-    public Controller(String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    public SchemaController(String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
         super(root, dataSource, objectMapper);
     }
 
@@ -57,7 +55,6 @@ public class Controller extends AbstractController {
             resourceBuilder = getAddMethods(tableName, resourceBuilder);
             rootResource.addChildResource(resourceBuilder.build());
         }
-        this.rootResource =  rootResource ;
     }
 
     private void addMethod(Resource.Builder resourceBuilder, String method, Inflector<ContainerRequestContext, Object> handler) {
@@ -69,8 +66,8 @@ public class Controller extends AbstractController {
         resourceBuilder.path(tableName);
         info("    GET    /%s", tableName);
 
-        ListController listController = new ListController(tableName, tableNames.get(tableName), dataSource, objectMapper);
-        this.rootResource.addChildResource(listController.getRootResource().build());
+        TableController tableController = new TableController(tableName, dataSource, objectMapper);
+        this.rootResource.addChildResource(tableController.getRootResource().build());
 
         Resource.Builder getIndividual = Resource.builder();
         getIndividual.path(tableName + "/{id}");

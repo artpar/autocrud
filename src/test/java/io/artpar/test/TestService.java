@@ -3,7 +3,7 @@ package io.artpar.test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import io.artpar.curd.Controller;
+import io.artpar.curd.SchemaController;
 import io.dropwizard.Application;
 import io.dropwizard.Configuration;
 import io.dropwizard.setup.Environment;
@@ -19,7 +19,7 @@ public class TestService extends Application<TestService.TestConfiguration> {
         haikiConfig.setUsername("root");
         haikiConfig.setPassword("parth123");
 
-        Controller res = new Controller("crud", new HikariDataSource(haikiConfig), new ObjectMapper());
+        SchemaController res = new SchemaController("crud", new HikariDataSource(haikiConfig), new ObjectMapper());
         environment.jersey().getResourceConfig().registerResources(res.getRootResource().build());
 
     }

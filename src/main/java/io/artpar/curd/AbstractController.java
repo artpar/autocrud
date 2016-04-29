@@ -24,12 +24,12 @@ public abstract class AbstractController {
 //    protected final DatabaseMetaData databaseMetaData;
     protected final ObjectMapper objectMapper;
     protected final Map<String, TableData> tableNames = new HashMap<>();
-    private final Logger logger = LoggerFactory.getLogger(Controller.class);
+    private final Logger logger = LoggerFactory.getLogger(SchemaController.class);
     protected Resource.Builder rootResource;
 
 
 
-    public TableResult paginatedResult(String select, String columns, String restOfTheClause, List<String> orderColumns, Integer offset, Integer limit) throws SQLException {
+    public TableResult paginatedResult(String select, String columns, String restOfTheClause, List<ColumnOrder> orderColumns, Integer offset, Integer limit) throws SQLException {
         String countQuery = "select count(*) " + restOfTheClause;
         Connection connection = dataSource.getConnection();
         PreparedStatement preparedStatement = connection.prepareStatement(countQuery);
@@ -41,7 +41,7 @@ public abstract class AbstractController {
         connection.close();
         String beforeLimitQuery = "select " + columns + restOfTheClause;
         if (orderColumns.size() > 0) {
-            beforeLimitQuery = beforeLimitQuery + " order by  " + String.join(",", orderColumns);
+            beforeLimitQuery = beforeLimitQuery + " order by  " + join(",", orderColumns);
         }
         List data = getList(beforeLimitQuery + " limit " + String.valueOf(offset) + "," + String.valueOf(limit));
 
@@ -52,6 +52,15 @@ public abstract class AbstractController {
         tr.setData(data);
         tr.setTotalCount(getTotalCount());
         return tr;
+    }
+
+    private String join (String s, List items) {
+        String q = "";
+        for (int i = 0;i < items.size() - 2; i++) {
+            q = q +  items.get(i).toString() + s;
+        }
+        q = q + items.get(items.size() - 1).toString();
+        return q;
     }
 
     protected abstract Integer getTotalCount() throws SQLException;
@@ -167,11 +176,13 @@ public abstract class AbstractController {
         this.rootResource.path(this.root);
         this.dataSource = dataSource;
         this.objectMapper = objectMapper;
-        objectMapper.addMixIn(BasicDynaBean.class, Controller.DynaJsonMixin.class);
+        objectMapper.addMixIn(BasicDynaBean.class, SchemaController.DynaJsonMixin.class);
         init();
     }
 
     protected List getList(String sql) throws SQLException {
+        logger.info("Query for get list " + this.root);
+        logger.info(sql);
         Connection connection = dataSource.getConnection();
         PreparedStatement statement = connection.prepareStatement(sql);
         ResultSet rs = statement.executeQuery();
@@ -191,9 +202,9 @@ public abstract class AbstractController {
 
     protected void error(Object... args) {
         Object arg = args[0];
-        Object[] rem = new Object[args.length - 2];
-        System.arraycopy(args, 1, rem, 0, args.length - 2);
-        logger.error(String.format(String.valueOf(args[0]), rem), args[args.length - 1]);
+        Object[] rem = new Object[args.length - 1];
+        System.arraycopy(args, 1, rem, 0, args.length - 1);
+        logger.error(String.format(String.valueOf(args[0]), rem));
     }
 
     protected void debug(Object... args) {
