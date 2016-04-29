@@ -1,0 +1,24 @@
+server:
+  applicationConnectors:
+    - type: http
+      port: 8091
+  adminConnectors:
+    - type: http
+      port: 8092
+
+
+logging:
+  # The default level of all loggers. Can be OFF, ERROR, WARN, INFO, DEBUG, TRACE, or ALL.
+  level: INFO
+  loggers:
+    io.artpar.curd: ALL
+  appenders:
+    - type: console
+    - type: file
+      threshold: DEBUG
+      logFormat: "%-6level [%d{HH:mm:ss.SSS}] [%t] %logger{5} - %X{code} %msg %n"
+      currentLogFilename: /tmp/application.log
+      archivedLogFilenamePattern: /tmp/application-%d{yyyy-MM-dd}-%i.log.gz
+      maxFileSize: 100 MB
+      archivedFileCount: 7
+      timeZone: IST
