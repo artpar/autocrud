@@ -50,7 +50,7 @@ public abstract class AbstractController {
         TableResult tr = new TableResult();
         tr.setFilteredCount(filteredCount);
         tr.setOffset(offset);
-        tr.setSize(limit);
+        tr.setSize(data.size());
         tr.setData(data);
         tr.setTotalCount(totalCount);
         return tr;

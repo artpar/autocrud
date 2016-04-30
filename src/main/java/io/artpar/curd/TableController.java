@@ -23,13 +23,12 @@ import java.util.Date;
 public class TableController extends AbstractController {
 
 
-    private Map<String, List<String>> AutoColumns;
     private static final List<String> UserTables = Arrays.asList("user", "user_usergroup", "usergroup");
-
+    private static final Random rng = new Random(new Date().getTime());
+    private Map<String, List<String>> AutoColumns;
     private String tableName;
     private TableData tableData;
-    private static final Random rng = new Random(new Date().getTime());
-    private List<String > ColumnsWeDontUpdate = Arrays.asList("id", "reference_id", "created_at", "updated_at");
+    private List<String> ColumnsWeDontUpdate = Arrays.asList("id", "reference_id", "created_at", "updated_at");
 
 
     public TableController(String context, String tableName, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
@@ -44,9 +43,11 @@ public class TableController extends AbstractController {
         this.rootResource.addMethod("POST").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
 
-        info("Added PUT " + this.context + "/([a-z0-9\\-]+)");
+        info("Added PUT " + this.context);
         this.rootResource.addMethod("PUT").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
+        info("Added DELETE " + this.context);
+        this.rootResource.addMethod("DELETE").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
     }
 
     public void initColumnData() {
@@ -56,57 +57,15 @@ public class TableController extends AbstractController {
         AutoColumns.put("updated_at", Arrays.asList("alter table " + tableName + " add column updated_at timestamp null default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP"));
         AutoColumns.put("reference_id", Arrays.asList("alter table " + tableName + " add column reference_id varchar(50)",
                 "update " + tableName + " set reference_id = uuid() where reference_id = null ",
-                "alter table " + tableName + " add constraint "+tableName+"_reference_id_uniq_"+rng.nextInt(10000 - 1) +" unique(reference_id)"));
+                "alter table " + tableName + " add constraint " + tableName + "_reference_id_uniq_" + rng.nextInt(10000 - 1) + " unique(reference_id)"));
         AutoColumns.put("permission", Arrays.asList("alter table " + tableName + " add column permission int(4) not null default 755"));
         AutoColumns.put("user_id", Arrays.asList("alter table " + tableName + " add column user_id int(11)"
-                , "update " +  tableName + " set user_id = (select min(id) from user)"
-                , "alter table " + tableName + " add constraint " + tableName + "_user_id_" + rng.nextInt(10000-1) + " foreign key (user_id) references user(id) "));
+                , "update " + tableName + " set user_id = (select min(id) from user)"
+                , "alter table " + tableName + " add constraint " + tableName + "_user_id_" + rng.nextInt(10000 - 1) + " foreign key (user_id) references user(id) "));
         AutoColumns.put("usergroup_id", Arrays.asList("alter table " + tableName + " add column usergroup_id int(11)"
-                , "update " +  tableName + " set usergroup_id = (select min(id) from usergroup)"
-                , "alter table " + tableName + " add constraint " + tableName + "_usergroup_id_" + rng.nextInt(10000-1) + " foreign key (usergroup_id) references usergroup(id) "));
+                , "update " + tableName + " set usergroup_id = (select min(id) from usergroup)"
+                , "alter table " + tableName + " add constraint " + tableName + "_usergroup_id_" + rng.nextInt(10000 - 1) + " foreign key (usergroup_id) references usergroup(id) "));
 
-    }
-
-
-    class MyRequest {
-        private Map<String, Object> originalValue = new HashMap<>();
-        private ContainerRequestContext containerRequestContext;
-
-        public MyRequest(ContainerRequestContext containerRequestContext) {
-            this.containerRequestContext = containerRequestContext;
-        }
-        public Map getBodyValueMap() throws IOException {
-            InputStream is = containerRequestContext.getEntityStream();
-            final Map map = objectMapper.readValue(is, Map.class);
-            originalValue.putAll(map);
-            List<String> removeKey = new LinkedList<>();
-            for (Object o : map.keySet()) {
-                String key = (String) o;
-                if(ColumnsWeDontUpdate.contains(key)) {
-                    removeKey.add(key);
-                }
-            }
-            for (String s : removeKey) {
-                map.remove(s);
-            }
-            return map;
-        }
-
-        public UriInfo getUriInfo() {
-            return containerRequestContext.getUriInfo();
-        }
-
-        public String getMethod() {
-            return containerRequestContext.getMethod();
-        }
-
-        public URI getRequestUri() {
-            return ((ContainerRequest)containerRequestContext).getRequestUri();
-        }
-
-        public Object getOriginalValue(String key) {
-            return originalValue.get(key);
-        }
     }
 
     public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
@@ -118,10 +77,62 @@ public class TableController extends AbstractController {
                 return this.list(new MyRequest(containerRequestContext));
             case "post":
                 return this.newItem(new MyRequest(containerRequestContext));
-            case "put" :
+            case "put":
                 return this.updateItem(new MyRequest(containerRequestContext));
+            case "delete":
+                return this.deleteItem(new MyRequest(containerRequestContext));
         }
         return Response.status(Response.Status.NOT_IMPLEMENTED);
+    }
+
+    public Object deleteItem(MyRequest containerRequestContext) throws IOException, SQLException {
+        Map values = containerRequestContext.getBodyValueMap();
+        info("Request object: %s", values);
+        List<String> allColumns = tableData.getColumnList();
+        List<String> colsToInsert = new LinkedList<>();
+        List<Object> valueList = new LinkedList<>();
+        for (Object col : values.keySet()) {
+            String colName = (String) col;
+            if (allColumns.contains(colName)) {
+                colsToInsert.add(colName);
+                valueList.add(values.get(colName));
+            }
+        }
+
+
+        final Object reference_id = containerRequestContext.getOriginalValue("reference_id");
+        if (reference_id == null || reference_id.toString().length() < 1) {
+            return Response.status(Response.Status.BAD_REQUEST);
+        }
+
+
+        String referenceId = String.valueOf(reference_id);
+        valueList.add(referenceId);
+
+        String sql = "delete from " + tableName + " ";
+        final int secondLast = colsToInsert.size() - 1;
+        for (int i = 0; i < colsToInsert.size(); i++) {
+            String s = colsToInsert.get(i);
+            sql = sql + s + "=?";
+            if (i < secondLast) {
+                sql = sql + ", ";
+            }
+        }
+
+        sql = sql + " where reference_id=?";
+
+        Connection connection = dataSource.getConnection();
+        logger.info("execute update for " + tableName + "\n" + sql);
+        PreparedStatement ps = connection.prepareStatement(sql);
+        for (int i = 1; i <= valueList.size(); i++) {
+            Object s = valueList.get(i - 1);
+            ps.setObject(i, s);
+        }
+        ps.execute();
+        values.put("reference_id", referenceId);
+        ps.close();
+        connection.close();
+        return values;
     }
 
     public Object updateItem(MyRequest containerRequestContext) throws IOException, SQLException {
@@ -139,12 +150,10 @@ public class TableController extends AbstractController {
         }
 
 
-
         final Object reference_id = containerRequestContext.getOriginalValue("reference_id");
         if (reference_id == null || reference_id.toString().length() < 1) {
             return Response.status(Response.Status.BAD_REQUEST);
         }
-
 
 
         String referenceId = String.valueOf(reference_id);
@@ -359,5 +368,47 @@ public class TableController extends AbstractController {
 
         rs.close();
         tableData.setColumnList(columnNames);
+    }
+
+    class MyRequest {
+        private Map<String, Object> originalValue = new HashMap<>();
+        private ContainerRequestContext containerRequestContext;
+
+        public MyRequest(ContainerRequestContext containerRequestContext) {
+            this.containerRequestContext = containerRequestContext;
+        }
+
+        public Map getBodyValueMap() throws IOException {
+            InputStream is = containerRequestContext.getEntityStream();
+            final Map map = objectMapper.readValue(is, Map.class);
+            originalValue.putAll(map);
+            List<String> removeKey = new LinkedList<>();
+            for (Object o : map.keySet()) {
+                String key = (String) o;
+                if (ColumnsWeDontUpdate.contains(key)) {
+                    removeKey.add(key);
+                }
+            }
+            for (String s : removeKey) {
+                map.remove(s);
+            }
+            return map;
+        }
+
+        public UriInfo getUriInfo() {
+            return containerRequestContext.getUriInfo();
+        }
+
+        public String getMethod() {
+            return containerRequestContext.getMethod();
+        }
+
+        public URI getRequestUri() {
+            return ((ContainerRequest) containerRequestContext).getRequestUri();
+        }
+
+        public Object getOriginalValue(String key) {
+            return originalValue.get(key);
+        }
     }
 }
