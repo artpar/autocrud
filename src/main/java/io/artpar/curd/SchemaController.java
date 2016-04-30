@@ -17,7 +17,7 @@ import java.util.*;
 public class SchemaController extends AbstractController {
 
     @Override
-    public boolean isPermissionOk(boolean b, User user, Map obj) {
+    public boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj) {
         return true;
     }
 
@@ -39,12 +39,12 @@ public class SchemaController extends AbstractController {
 
         Connection connection = this.dataSource.getConnection();
         DatabaseMetaData databaseMetaData = connection.getMetaData();
-        connection.close();
         ResultSet result = databaseMetaData.getTables(catalog, schemaPattern, tableNamePattern, types);
         List<String> tableNameList = getSingleColumnFromResultSet(result, 3);
         for (String s : tableNameList) {
             tableNames.put(s, new TableData());
         }
+        connection.close();
 
         result.close();
 

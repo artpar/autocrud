@@ -29,12 +29,12 @@ public abstract class AbstractController {
     protected String context;
 
 
-    public abstract boolean isPermissionOk(boolean b, User user, Map obj);
+    public abstract boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj);
 
 
     public TableResult paginatedResult(String columns, String restOfTheClause,
                                        List<String> whereColumns, List<Object> whereValues,
-                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit, User user )
+                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit, UserInterface userInterface)
             throws SQLException {
 
         String restOfTheClauseWithWhereClause = restOfTheClause;
@@ -52,7 +52,7 @@ public abstract class AbstractController {
         List allowed = new LinkedList<>();
         for (Object o : data) {
             Map m = (Map) o;
-            if(isPermissionOk(true, user, m)) {
+            if(isPermissionOk(true, userInterface, m)) {
                 allowed.add(o);
             }
         }

@@ -104,10 +104,10 @@ public class TableController extends AbstractController {
         if (Objects.equals(tableName, "user")) {
             return null;
         }
-        User user = myRequest.getUser();
+        UserInterface userInterface = myRequest.getUser();
 
         final boolean isGet = myRequest.getMethod().equalsIgnoreCase("get");
-        boolean ok1 = isOk(isGet, user, tablePermission, userId, userGroupId);
+        boolean ok1 = isOk(isGet, userInterface, tablePermission, userId, userGroupId);
         if (!ok1) {
             return Response.status(Response.Status.UNAUTHORIZED);
         }
@@ -127,7 +127,7 @@ public class TableController extends AbstractController {
 
         final MultivaluedHashMap<String, String> values = new MultivaluedHashMap<>();
         values.putSingle("reference_id", referenceId);
-        Object res = getResult(values, user);
+        Object res = getResult(values, userInterface);
         if (res instanceof TableResult) {
             for (Object o : ((TableResult) res).getData()) {
                 Map map = (Map)o;
@@ -147,7 +147,7 @@ public class TableController extends AbstractController {
                 }catch (Exception e) {
 
                 }
-                if (isOk(isGet, user, permission, ownerUserId, ownerGroupId)) {
+                if (isOk(isGet, userInterface, permission, ownerUserId, ownerGroupId)) {
                     return null;
                 }
             }
@@ -158,9 +158,9 @@ public class TableController extends AbstractController {
         return null;
     }
 
-    private boolean isOk(boolean isGet, User user, int permission, Long ownerUserId, Long ownerGroupId) {
+    private boolean isOk(boolean isGet, UserInterface userInterface, int permission, Long ownerUserId, Long ownerGroupId) {
         boolean canRead = false, canWrite = false;
-        int checkAgainst = getUserCurrentPermissionValue(user, permission, ownerUserId, ownerGroupId);
+        int checkAgainst = getUserCurrentPermissionValue(userInterface, permission, ownerUserId, ownerGroupId);
         if ((checkAgainst & 1) == 1) {
             canRead = true;
         }
@@ -171,15 +171,15 @@ public class TableController extends AbstractController {
         return ((canWrite && !isGet) || (canRead && isGet));
     }
 
-    private int getUserCurrentPermissionValue(User user, int permission, Long ownerUserId, Long ownerGroupId) {
+    private int getUserCurrentPermissionValue(UserInterface userInterface, int permission, Long ownerUserId, Long ownerGroupId) {
 //        boolean isUser = false, isGroup = false;
         UserType type = UserType.World;
         int count = 0;
 
-        if (Objects.equals(ownerUserId, user.getId())) {
+        if (Objects.equals(ownerUserId, userInterface.getId())) {
             type = UserType.User;
             count = 2;
-        } else if (user.getUserGroupId().contains(ownerGroupId)) {
+        } else if (userInterface.getUserGroupId().contains(ownerGroupId)) {
             type = UserType.Group;
             count = 1;
         }
@@ -325,7 +325,7 @@ public class TableController extends AbstractController {
         return getResult(queryParams, containerRequestContext.getUser());
     }
 
-    private Object getResult(MultivaluedMap<String, String> queryParams, User user) {
+    private Object getResult(MultivaluedMap<String, String> queryParams, UserInterface userInterface) {
         try {
             List<String> columnNames = tableData.getColumnList();
             List<String> finalList = new LinkedList<>();
@@ -398,7 +398,7 @@ public class TableController extends AbstractController {
 
 
             String columns = String.join(",", columnNames);
-            return paginatedResult(columns, " from " + tableName, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, user);
+            return paginatedResult(columns, " from " + tableName, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, userInterface);
         } catch (SQLException e) {
             logger.error("SQL Exception ", e);
             error("Failed to get columns of table[" + tableName + "]", e);
@@ -407,7 +407,7 @@ public class TableController extends AbstractController {
     }
 
     @Override
-    public boolean isPermissionOk(boolean isGet, User user, Map obj) {
+    public boolean isPermissionOk(boolean isGet, UserInterface userInterface, Map obj) {
         int permission = (int) obj.get("permission");
         Object user_id = obj.get("user_id");
         if (user_id == null )  {
@@ -417,7 +417,7 @@ public class TableController extends AbstractController {
         if (usergroup_id == null) {
             usergroup_id = 1L;
         }
-        return isOk(isGet, user, permission, (Long) user_id, (Long) usergroup_id);
+        return isOk(isGet, userInterface, permission, (Long) user_id, (Long) usergroup_id);
     }
 
     @Override
@@ -470,7 +470,6 @@ public class TableController extends AbstractController {
 
         Connection connection = this.dataSource.getConnection();
         DatabaseMetaData databaseMetaData = connection.getMetaData();
-        connection.close();
         ResultSet rs = databaseMetaData.getColumns(null, null, tableName, null);
 //        debugColumnNames(rs);
         List<String> columnNames = getSingleColumnFromResultSet(rs, "COLUMN_NAME");
@@ -510,6 +509,7 @@ public class TableController extends AbstractController {
             }
         }
 
+        connection.close();
         rs.close();
         tableData.setColumnList(columnNames);
     }
@@ -570,8 +570,8 @@ public class TableController extends AbstractController {
             }
         }
 
-        public User getUser() {
-            return (User) containerRequestContext.getProperty("user");
+        public UserInterface getUser() {
+            return (UserInterface) containerRequestContext.getProperty("user");
         }
 
         public Map getBodyValueMap() throws IOException {
