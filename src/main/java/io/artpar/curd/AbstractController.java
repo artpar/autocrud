@@ -29,9 +29,12 @@ public abstract class AbstractController {
     protected String context;
 
 
+    public abstract boolean isPermissionOk(boolean b, User user, Map obj);
+
+
     public TableResult paginatedResult(String columns, String restOfTheClause,
                                        List<String> whereColumns, List<Object> whereValues,
-                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit)
+                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit, User user )
             throws SQLException {
 
         String restOfTheClauseWithWhereClause = restOfTheClause;
@@ -46,12 +49,19 @@ public abstract class AbstractController {
             beforeLimitQuery = beforeLimitQuery + " order by  " + join(",", orderColumns);
         }
         List data = getList(beforeLimitQuery + " limit " + String.valueOf(offset) + "," + String.valueOf(limit), whereValues);
+        List allowed = new LinkedList<>();
+        for (Object o : data) {
+            Map m = (Map) o;
+            if(isPermissionOk(true, user, m)) {
+                allowed.add(o);
+            }
+        }
 
         TableResult tr = new TableResult();
         tr.setFilteredCount(filteredCount);
         tr.setOffset(offset);
         tr.setSize(data.size());
-        tr.setData(data);
+        tr.setData(allowed);
         tr.setTotalCount(totalCount);
         return tr;
     }

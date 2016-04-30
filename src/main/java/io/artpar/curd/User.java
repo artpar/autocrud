@@ -6,22 +6,22 @@ import java.util.List;
  * Created by parth on 30/4/16.
  */
 public class User {
-    Integer id;
-    List<Integer> userGroupId;
+    Long id;
+    List<Long> userGroupId;
 
-    public Integer getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(Integer id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public List<Integer> getUserGroupId() {
+    public List<Long> getUserGroupId() {
         return userGroupId;
     }
 
-    public void setUserGroupId(List<Integer> userGroupId) {
+    public void setUserGroupId(List<Long> userGroupId) {
         this.userGroupId = userGroupId;
     }
 }

@@ -26,6 +26,9 @@ public class TableController extends AbstractController {
     private Map<String, List<String>> AutoColumns;
     private String tableName;
     private TableData tableData;
+    private int tablePermission;
+    private Long userId;
+    private Long userGroupId;
     private List<String> ColumnsWeDontUpdate = Arrays.asList("id", "reference_id", "created_at", "updated_at");
 
 
@@ -98,10 +101,19 @@ public class TableController extends AbstractController {
     }
 
     private Object permissionCheck(MyRequest myRequest) throws IOException {
-        boolean canRead = false, canWrite = false;
+        if (Objects.equals(tableName, "user")) {
+            return null;
+        }
+        User user = myRequest.getUser();
+
+        final boolean isGet = myRequest.getMethod().equalsIgnoreCase("get");
+        boolean ok1 = isOk(isGet, user, tablePermission, userId, userGroupId);
+        if (!ok1) {
+            return Response.status(Response.Status.UNAUTHORIZED);
+        }
+
 
         String referenceId = null;
-        User user = myRequest.getUser();
         switch (myRequest.getMethod().toLowerCase()) {
             case "get":
                 referenceId = myRequest.getQueryParam("reference_id");
@@ -115,33 +127,52 @@ public class TableController extends AbstractController {
 
         final MultivaluedHashMap<String, String> values = new MultivaluedHashMap<>();
         values.putSingle("reference_id", referenceId);
-        Object res = getResult(values);
+        Object res = getResult(values, user);
         if (res instanceof TableResult) {
-            Map map = (Map) ((TableResult) res).getData().get(0);
-            int permission = (int) map.get("permission");
-            Integer ownerUserId = (Integer) map.get("user_id");
-            Integer ownerGroupId = (Integer) map.get("usergroup_id");
-            int count = 0;
-            int checkAgainst = getUserCurrentPermissionValue(user, permission, ownerUserId, ownerGroupId);
-            if ((checkAgainst & 1) == 1) {
-                canRead = true;
-            }
-            if ((checkAgainst & 2) == 2) {
-                canWrite = true;
-            }
+            for (Object o : ((TableResult) res).getData()) {
+                Map map = (Map)o;
+                int permission = (int) map.get("permission");
 
-            final boolean isGet = myRequest.getMethod().equalsIgnoreCase("get");
-            if ((!canWrite && !isGet) || (!canRead && isGet)) {
-                return Response.status(Response.Status.UNAUTHORIZED);
+                Long ownerUserId = 1L;
+                try {
+
+                    ownerUserId = Long.valueOf( String.valueOf( map.get("user_id")) );
+                }catch (Exception e) {
+
+                }
+                Long ownerGroupId = 1L;
+                try {
+
+                    ownerGroupId = Long.valueOf(String.valueOf( map.get("usergroup_id") ));
+                }catch (Exception e) {
+
+                }
+                if (isOk(isGet, user, permission, ownerUserId, ownerGroupId)) {
+                    return null;
+                }
             }
-        } else {
             return Response.status(Response.Status.NOT_FOUND);
+        } else {
         }
 
         return null;
     }
 
-    private int getUserCurrentPermissionValue(User user, int permission, Integer ownerUserId, Integer ownerGroupId) {
+    private boolean isOk(boolean isGet, User user, int permission, Long ownerUserId, Long ownerGroupId) {
+        boolean canRead = false, canWrite = false;
+        int checkAgainst = getUserCurrentPermissionValue(user, permission, ownerUserId, ownerGroupId);
+        if ((checkAgainst & 1) == 1) {
+            canRead = true;
+        }
+        if ((checkAgainst & 2) == 2) {
+            canWrite = true;
+        }
+
+        return ((canWrite && !isGet) || (canRead && isGet));
+    }
+
+    private int getUserCurrentPermissionValue(User user, int permission, Long ownerUserId, Long ownerGroupId) {
+//        boolean isUser = false, isGroup = false;
         UserType type = UserType.World;
         int count = 0;
 
@@ -291,10 +322,10 @@ public class TableController extends AbstractController {
 
     public Object list(MyRequest containerRequestContext) {
         MultivaluedMap<String, String> queryParams = containerRequestContext.getQueryParameters();
-        return getResult(queryParams);
+        return getResult(queryParams, containerRequestContext.getUser());
     }
 
-    private Object getResult(MultivaluedMap<String, String> queryParams) {
+    private Object getResult(MultivaluedMap<String, String> queryParams, User user) {
         try {
             List<String> columnNames = tableData.getColumnList();
             List<String> finalList = new LinkedList<>();
@@ -367,12 +398,26 @@ public class TableController extends AbstractController {
 
 
             String columns = String.join(",", columnNames);
-            return paginatedResult(columns, " from " + tableName, whereColumns, whereValues, finalOrders, actualOffset, actualLimit);
+            return paginatedResult(columns, " from " + tableName, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, user);
         } catch (SQLException e) {
             logger.error("SQL Exception ", e);
             error("Failed to get columns of table[" + tableName + "]", e);
         }
         return Response.status(Response.Status.INTERNAL_SERVER_ERROR);
+    }
+
+    @Override
+    public boolean isPermissionOk(boolean isGet, User user, Map obj) {
+        int permission = (int) obj.get("permission");
+        Object user_id = obj.get("user_id");
+        if (user_id == null )  {
+            user_id = 1L;
+        }
+        Object usergroup_id = obj.get("usergroup_id");
+        if (usergroup_id == null) {
+            usergroup_id = 1L;
+        }
+        return isOk(isGet, user, permission, (Long) user_id, (Long) usergroup_id);
     }
 
     @Override
@@ -476,15 +521,21 @@ public class TableController extends AbstractController {
         ResultSet rs = ps.executeQuery();
         boolean ok = rs.next();
         if (!ok) {
-            PreparedStatement ps1 = conn.prepareStatement("INSERT INTO world (name, reference_id, user_id, usergroup_id, status) VALUES (?,?,1,1,'active')");
+            PreparedStatement ps1 = conn.prepareStatement("INSERT INTO world (name, reference_id, user_id, usergroup_id, status, permission) VALUES (?,?,1,1,'active',755)");
             ps1.setString(1, tableName);
             ps1.setString(2, UUID.randomUUID().toString());
             ps.execute();
             ps.close();
             rs.close();
             conn.close();
+            tablePermission = 755;
+            userId = 1L;
+            userGroupId = 1L;
             logger.info("Table info does not exist in world for " + tableName + ". Creating it");
         } else {
+            tablePermission = rs.getInt("permission");
+            userId = rs.getLong("user_id");
+            userGroupId = rs.getLong("usergroup_id");
             logger.info("The world knows about this table");
         }
 

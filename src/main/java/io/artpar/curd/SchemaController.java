@@ -17,6 +17,11 @@ import java.util.*;
 public class SchemaController extends AbstractController {
 
     @Override
+    public boolean isPermissionOk(boolean b, User user, Map obj) {
+        return true;
+    }
+
+    @Override
     protected Integer getTotalCount() throws SQLException {
         return tableNames.size();
     }

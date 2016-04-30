@@ -19,6 +19,7 @@ public class TestService extends Application<TestService.TestConfiguration> {
         haikiConfig.setUsername("root");
         haikiConfig.setPassword("parth123");
 
+        environment.jersey().register(InsertDummyUserFilter.class);
         SchemaController res = new SchemaController("/", "crud", new HikariDataSource(haikiConfig), new ObjectMapper());
         environment.jersey().getResourceConfig().registerResources(res.getRootResource().build());
         environment.jersey().getResourceConfig().getEndpointsInfo();
