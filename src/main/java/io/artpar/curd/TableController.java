@@ -7,9 +7,11 @@ import javax.sql.DataSource;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriInfo;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.sql.*;
 import java.util.*;
 import java.util.Date;
@@ -20,11 +22,13 @@ import java.util.Date;
 public class TableController extends AbstractController {
 
 
-    private Map<String, List<String>> ColumnsWeDontUpdate;
+    private Map<String, List<String>> AutoColumns;
+    private static final List<String> UserTables = Arrays.asList("user", "user_usergroup", "usergroup");
 
     private String tableName;
     private TableData tableData;
     private static final Random rng = new Random(new Date().getTime());
+    private List<String > ColumnsWeDontUpdate = Arrays.asList("id", "reference_id", "created_at", "updated_at");
 
 
     public TableController(String tableName, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
@@ -37,14 +41,59 @@ public class TableController extends AbstractController {
     }
 
     public void initColumnData() {
-        ColumnsWeDontUpdate = new HashMap<>();
-        ColumnsWeDontUpdate.put("id", Arrays.asList("alter table " + tableName + " add column `id` int(11) unsigned  primary key auto_increment"));
-        ColumnsWeDontUpdate.put("created_at", Arrays.asList("alter table " + tableName + " add column created_at timestamp default CURRENT_TIMESTAMP"));
-        ColumnsWeDontUpdate.put("updated_at", Arrays.asList("alter table " + tableName + " add column updated_at timestamp null default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP"));
-        ColumnsWeDontUpdate.put("reference_id", Arrays.asList("alter table " + tableName + " add column reference_id varchar(50)",
+        AutoColumns = new HashMap<>();
+        AutoColumns.put("id", Arrays.asList("alter table " + tableName + " add column `id` int(11) unsigned  primary key auto_increment"));
+        AutoColumns.put("created_at", Arrays.asList("alter table " + tableName + " add column created_at timestamp default CURRENT_TIMESTAMP"));
+        AutoColumns.put("updated_at", Arrays.asList("alter table " + tableName + " add column updated_at timestamp null default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP"));
+        AutoColumns.put("reference_id", Arrays.asList("alter table " + tableName + " add column reference_id varchar(50)",
                 "update " + tableName + " set reference_id = uuid() where reference_id = null ",
                 "alter table " + tableName + " add constraint "+tableName+"_reference_id_uniq_"+rng.nextInt(10000 - 1) +" unique(reference_id)"));
+        AutoColumns.put("permission", Arrays.asList("alter table " + tableName + " add column permission int(4) not null default 755"));
+        AutoColumns.put("user_id", Arrays.asList("alter table " + tableName + " add column user_id int(11)"
+                , "update " +  tableName + " set user_id = (select min(id) from user)"
+                , "alter table " + tableName + " add constraint " + tableName + "_user_id_" + rng.nextInt(10000-1) + " foreign key (user_id) references user(id) "));
+        AutoColumns.put("usergroup_id", Arrays.asList("alter table " + tableName + " add column usergroup_id int(11)"
+                , "update " +  tableName + " set usergroup_id = (select min(id) from usergroup)"
+                , "alter table " + tableName + " add constraint " + tableName + "_usergroup_id_" + rng.nextInt(10000-1) + " foreign key (usergroup_id) references usergroup(id) "));
 
+    }
+
+
+    class MyRequest {
+        private ContainerRequestContext containerRequestContext;
+
+        public MyRequest(ContainerRequestContext containerRequestContext) {
+            this.containerRequestContext = containerRequestContext;
+        }
+        public Map getBodyValueMap() throws IOException {
+            InputStream is = containerRequestContext.getEntityStream();
+            final Map map = objectMapper.readValue(is, Map.class);
+            List<String> removeKey = new LinkedList<>();
+            for (Object o : map.keySet()) {
+                String key = (String) o;
+                if(ColumnsWeDontUpdate.contains(key)) {
+                    removeKey.add(key);
+                }
+            }
+            for (String s : removeKey) {
+                map.remove(s);
+            }
+
+
+            return map;
+        }
+
+        public UriInfo getUriInfo() {
+            return containerRequestContext.getUriInfo();
+        }
+
+        public String getMethod() {
+            return containerRequestContext.getMethod();
+        }
+
+        public URI getRequestUri() {
+            return ((ContainerRequest)containerRequestContext).getRequestUri();
+        }
     }
 
     public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
@@ -53,17 +102,16 @@ public class TableController extends AbstractController {
         String ourName = path.substring(lastSlash + 1);
         switch (containerRequestContext.getMethod().toLowerCase()) {
             case "get":
-                return this.list(containerRequestContext);
+                return this.list(new MyRequest(containerRequestContext));
             case "post":
-                return this.newItem(containerRequestContext);
+                return this.newItem(new MyRequest(containerRequestContext));
         }
         return Response.status(Response.Status.NOT_IMPLEMENTED);
     }
 
 
-    public Object newItem(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
-        InputStream is = containerRequestContext.getEntityStream();
-        Map values = objectMapper.readValue(is, Map.class);
+    public Object newItem(MyRequest containerRequestContext) throws IOException, SQLException {
+        Map values = containerRequestContext.getBodyValueMap();
         info("Request object: %s", values);
         List<String> allColumns = tableData.getColumnList();
         List<String> colsToInsert = new LinkedList<>();
@@ -100,9 +148,8 @@ public class TableController extends AbstractController {
         return values;
     }
 
-    public Object list(ContainerRequestContext containerRequestContext) {
-        Collection<String> propertyNames = containerRequestContext.getPropertyNames();
-        String query = ((ContainerRequest) containerRequestContext).getRequestUri().getQuery();
+    public Object list(MyRequest containerRequestContext) {
+        String query = containerRequestContext.getRequestUri().getQuery();
 
         try {
             if (tableData.getColumnList() == null) {
@@ -123,7 +170,6 @@ public class TableController extends AbstractController {
                 }
                 columnNames = finalList;
             }
-            debug("%s", propertyNames);
             String[] limit = queryParams.get("limit");
             String[] offset = queryParams.get("offset");
             String[] order = queryParams.get("order");
@@ -201,7 +247,7 @@ public class TableController extends AbstractController {
         List<String> columnNames = getSingleColumnFromResultSet(rs, "COLUMN_NAME");
 
         Map<String, Boolean> found = new HashMap<>();
-        for (String col : ColumnsWeDontUpdate.keySet()) {
+        for (String col : AutoColumns.keySet()) {
             found.put(col, false);
         }
 
@@ -210,27 +256,30 @@ public class TableController extends AbstractController {
         });
 
 
-        for (Map.Entry<String, Boolean> stringBooleanEntry : found.entrySet()) {
-            if (stringBooleanEntry.getValue()) {
-                continue;
-            }
-            error("Column %s not found in table %s", stringBooleanEntry.getKey(), tableName);
-            final List<String> sqlList = ColumnsWeDontUpdate.get(stringBooleanEntry.getKey());
+        if (!UserTables.contains(tableName)) {
 
-            connection = dataSource.getConnection();
-            connection.setAutoCommit(false);
-            for (String sql : sqlList) {
-                PreparedStatement ps = connection.prepareStatement(sql);
-                info("Executing: " + sql);
-                ps.execute();
-                ps.close();
-            }
-            connection.commit();
-            connection.setAutoCommit(true);
-            connection.close();
 
+            for (Map.Entry<String, Boolean> stringBooleanEntry : found.entrySet()) {
+                if (stringBooleanEntry.getValue()) {
+                    continue;
+                }
+                error("Column %s not found in table %s", stringBooleanEntry.getKey(), tableName);
+                final List<String> sqlList = AutoColumns.get(stringBooleanEntry.getKey());
+
+                connection = dataSource.getConnection();
+                connection.setAutoCommit(false);
+                for (String sql : sqlList) {
+                    PreparedStatement ps = connection.prepareStatement(sql);
+                    info("Executing: " + sql);
+                    ps.execute();
+                    ps.close();
+                }
+                connection.commit();
+                connection.setAutoCommit(true);
+                connection.close();
+
+            }
         }
-
 
         rs.close();
         tableData.setColumnList(columnNames);
