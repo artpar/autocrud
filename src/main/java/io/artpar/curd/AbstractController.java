@@ -29,7 +29,7 @@ public abstract class AbstractController {
     protected String context;
 
 
-    public TableResult paginatedResult(String select, String columns, String restOfTheClause,
+    public TableResult paginatedResult(String columns, String restOfTheClause,
                                        List<String> whereColumns, List<Object> whereValues,
                                        List<ColumnOrder> orderColumns, Integer offset, Integer limit)
             throws SQLException {
@@ -57,7 +57,7 @@ public abstract class AbstractController {
     }
 
     private int getInt(String countQuery, List<Object> whereValues) throws SQLException {
-        logger.info("Execute count query: " + countQuery);
+        logger.debug("Execute count query: " + countQuery);
         Connection connection = dataSource.getConnection();
         PreparedStatement preparedStatement = connection.prepareStatement(countQuery);
         for (int i = 0; i < whereValues.size(); i++) {
@@ -125,79 +125,10 @@ public abstract class AbstractController {
      * @return a <code>HashTable</code> object built
      * from the parsed key-value pairs
      */
-    public static Hashtable<String, String[]> parseQueryString(String s) {
-
-        String valArray[] = null;
-
-        if (s == null) {
-            return new Hashtable<>();
-        }
-
-        Hashtable<String, String[]> ht = new Hashtable<String, String[]>();
-        StringBuilder sb = new StringBuilder();
-        StringTokenizer st = new StringTokenizer(s, "&");
-        while (st.hasMoreTokens()) {
-            String pair = st.nextToken();
-            int pos = pair.indexOf('=');
-            if (pos == -1) {
-                // XXX
-                // should give more detail about the illegal argument
-                throw new IllegalArgumentException();
-            }
-            String key = parseName(pair.substring(0, pos), sb);
-            String val = parseName(pair.substring(pos + 1, pair.length()), sb);
-            if (ht.containsKey(key)) {
-                String oldVals[] = ht.get(key);
-                valArray = new String[oldVals.length + 1];
-                for (int i = 0; i < oldVals.length; i++) {
-                    valArray[i] = oldVals[i];
-                }
-                valArray[oldVals.length] = val;
-            } else {
-                valArray = new String[1];
-                valArray[0] = val;
-            }
-            ht.put(key, valArray);
-        }
-
-        return ht;
-    }
 
     /*
          * Parse a name in the query string.
          */
-    private static String parseName(String s, StringBuilder sb) {
-        sb.setLength(0);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '+':
-                    sb.append(' ');
-                    break;
-                case '%':
-                    try {
-                        sb.append((char) Integer.parseInt(s.substring(i + 1, i + 3),
-                                16));
-                        i += 2;
-                    } catch (NumberFormatException e) {
-                        // XXX
-                        // need to be more specific about illegal arg
-                        throw new IllegalArgumentException();
-                    } catch (StringIndexOutOfBoundsException e) {
-                        String rest = s.substring(i);
-                        sb.append(rest);
-                        if (rest.length() == 2)
-                            i++;
-                    }
-
-                    break;
-                default:
-                    sb.append(c);
-                    break;
-            }
-        }
-        return sb.toString();
-    }
 
     public Resource.Builder getRootResource() {
         return rootResource;
@@ -216,8 +147,8 @@ public abstract class AbstractController {
     }
 
     protected List getList(String sql, List<Object> questions) throws SQLException {
-        logger.info("Query for get list " + this.root);
-        logger.info(sql);
+        logger.debug("Query for get list " + this.root);
+        logger.debug(sql);
         Connection connection = dataSource.getConnection();
         PreparedStatement statement = connection.prepareStatement(sql);
         for (int i = 0; i < questions.size(); i++) {
@@ -257,7 +188,7 @@ public abstract class AbstractController {
         Object arg = args[0];
         Object[] rem = new Object[args.length - 1];
         System.arraycopy(args, 1, rem, 0, args.length - 1);
-        logger.info(String.format((String) arg, rem));
+        logger.debug(String.format((String) arg, rem));
     }
 
     protected List<String> getSingleColumnFromResultSet(ResultSet rs, Integer colId) throws SQLException {

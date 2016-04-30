@@ -1,14 +1,12 @@
 package io.artpar.curd;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.glassfish.jersey.server.ContainerRequest;
-import org.glassfish.jersey.server.model.Resource;
 
 import javax.sql.DataSource;
 import javax.ws.rs.container.ContainerRequestContext;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import javax.ws.rs.core.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
@@ -36,17 +34,17 @@ public class TableController extends AbstractController {
 
         final Method router = TableController.class.getMethod("router", ContainerRequestContext.class);
 
-        info("Added GET " + this.context);
+        debug("Added GET " + this.context);
         this.rootResource.addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
-        info("Added POST " + this.context);
+        debug("Added POST " + this.context);
         this.rootResource.addMethod("POST").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
 
-        info("Added PUT " + this.context);
+        debug("Added PUT " + this.context);
         this.rootResource.addMethod("PUT").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
-        info("Added DELETE " + this.context);
+        debug("Added DELETE " + this.context);
         this.rootResource.addMethod("DELETE").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
     }
 
@@ -55,6 +53,7 @@ public class TableController extends AbstractController {
         AutoColumns.put("id", Arrays.asList("alter table " + tableName + " add column `id` int(11) unsigned  primary key auto_increment"));
         AutoColumns.put("created_at", Arrays.asList("alter table " + tableName + " add column created_at timestamp default CURRENT_TIMESTAMP"));
         AutoColumns.put("updated_at", Arrays.asList("alter table " + tableName + " add column updated_at timestamp null default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP"));
+        AutoColumns.put("status", Arrays.asList("alter table " + tableName + " add column status varchar(20) default 'pending'"));
         AutoColumns.put("reference_id", Arrays.asList("alter table " + tableName + " add column reference_id varchar(50)",
                 "update " + tableName + " set reference_id = uuid() where reference_id = null ",
                 "alter table " + tableName + " add constraint " + tableName + "_reference_id_uniq_" + rng.nextInt(10000 - 1) + " unique(reference_id)"));
@@ -65,29 +64,59 @@ public class TableController extends AbstractController {
         AutoColumns.put("usergroup_id", Arrays.asList("alter table " + tableName + " add column usergroup_id int(11)"
                 , "update " + tableName + " set usergroup_id = (select min(id) from usergroup)"
                 , "alter table " + tableName + " add constraint " + tableName + "_usergroup_id_" + rng.nextInt(10000 - 1) + " foreign key (usergroup_id) references usergroup(id) "));
-
     }
 
     public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
         final String path = containerRequestContext.getUriInfo().getPath();
         final int lastSlash = path.lastIndexOf("/");
         String ourName = path.substring(lastSlash + 1);
+        final MyRequest myRequest = new MyRequest(containerRequestContext);
+        Object re = permissionCheck(myRequest);
+        if (re != null) {
+            return re;
+        }
         switch (containerRequestContext.getMethod().toLowerCase()) {
             case "get":
-                return this.list(new MyRequest(containerRequestContext));
+                return this.list(myRequest);
             case "post":
-                return this.newItem(new MyRequest(containerRequestContext));
+                return this.newItem(myRequest);
             case "put":
-                return this.updateItem(new MyRequest(containerRequestContext));
+                return this.updateItem(myRequest);
             case "delete":
-                return this.deleteItem(new MyRequest(containerRequestContext));
+                return this.deleteItem(myRequest);
         }
         return Response.status(Response.Status.NOT_IMPLEMENTED);
     }
 
+    private Object permissionCheck(MyRequest myRequest) throws IOException {
+        String referenceId = null;
+        switch (myRequest.getMethod().toLowerCase()) {
+            case "get":
+                referenceId = myRequest.getQueryParam("reference_id");
+                break;
+            case "put":
+            case "post":
+            case "delete":
+                referenceId = (String) myRequest.getBodyValueMap().get("reference_id");
+        }
+
+
+        final MultivaluedHashMap<String, String> values = new MultivaluedHashMap<>();
+        values.putSingle("reference_id", referenceId);
+        Object res = getResult(values);
+        if (res instanceof TableResult) {
+            Map map= (Map) ((TableResult) res).getData().get(0);
+            int permission = (int) map.get("permission");
+        } else {
+            return Response.status(Response.Status.NOT_FOUND);
+        }
+
+        return null;
+    }
+
     public Object deleteItem(MyRequest containerRequestContext) throws IOException, SQLException {
         Map values = containerRequestContext.getBodyValueMap();
-        info("Request object: %s", values);
+        debug("Request object: %s", values);
         List<String> allColumns = tableData.getColumnList();
         List<String> colsToInsert = new LinkedList<>();
         List<Object> valueList = new LinkedList<>();
@@ -122,7 +151,7 @@ public class TableController extends AbstractController {
         sql = sql + " where reference_id=?";
 
         Connection connection = dataSource.getConnection();
-        logger.info("execute update for " + tableName + "\n" + sql);
+        logger.debug("execute update for " + tableName + "\n" + sql);
         PreparedStatement ps = connection.prepareStatement(sql);
         for (int i = 1; i <= valueList.size(); i++) {
             Object s = valueList.get(i - 1);
@@ -137,7 +166,7 @@ public class TableController extends AbstractController {
 
     public Object updateItem(MyRequest containerRequestContext) throws IOException, SQLException {
         Map values = containerRequestContext.getBodyValueMap();
-        info("Request object: %s", values);
+        debug("Request object: %s", values);
         List<String> allColumns = tableData.getColumnList();
         List<String> colsToInsert = new LinkedList<>();
         List<Object> valueList = new LinkedList<>();
@@ -172,7 +201,7 @@ public class TableController extends AbstractController {
         sql = sql + " where reference_id=?";
 
         Connection connection = dataSource.getConnection();
-        logger.info("execute update for " + tableName + "\n" + sql);
+        logger.debug("execute update for " + tableName + "\n" + sql);
         PreparedStatement ps = connection.prepareStatement(sql);
         for (int i = 1; i <= valueList.size(); i++) {
             Object s = valueList.get(i - 1);
@@ -187,7 +216,7 @@ public class TableController extends AbstractController {
 
     public Object newItem(MyRequest containerRequestContext) throws IOException, SQLException {
         Map values = containerRequestContext.getBodyValueMap();
-        info("Request object: %s", values);
+        debug("Request object: %s", values);
         List<String> allColumns = tableData.getColumnList();
         List<String> colsToInsert = new LinkedList<>();
         List<Object> valueList = new LinkedList<>();
@@ -220,17 +249,18 @@ public class TableController extends AbstractController {
     }
 
     public Object list(MyRequest containerRequestContext) {
-        String query = containerRequestContext.getRequestUri().getQuery();
+        MultivaluedMap<String, String> queryParams = containerRequestContext.getQueryParameters();
+        return getResult(queryParams);
+    }
 
+    private Object getResult(MultivaluedMap<String, String> queryParams) {
         try {
-
             List<String> columnNames = tableData.getColumnList();
             List<String> finalList = new LinkedList<>();
-            Hashtable<String, String[]> queryParams = parseQueryString(query);
-            String[] columnFilterList = queryParams.get("column");
-            if (columnFilterList != null && columnFilterList[0].length() > 0) {
-                String[] columnInRequest = queryParams.get("column");
-                List<String> names = Arrays.asList(columnInRequest[0].split(","));
+            String columnFilterList = queryParams.getFirst("column");
+            if (columnFilterList != null && columnFilterList.length() > 0) {
+                String columnInRequest = queryParams.getFirst("column");
+                List<String> names = Arrays.asList(columnInRequest.split(","));
                 for (String name : columnNames) {
                     if (names.contains(name)) {
                         finalList.add(name);
@@ -239,11 +269,11 @@ public class TableController extends AbstractController {
                 columnNames = finalList;
             }
 
-            String[] where = queryParams.get("where");
+            String where = queryParams.getFirst("where");
             List<String> whereColumns = new LinkedList<>();
             List<Object> whereValues = new LinkedList<>();
-            if (where != null && where[0].length() > 3) {
-                String[] whereList = where[0].split(",");
+            if (where != null && where.length() > 3) {
+                String[] whereList = where.split(",");
                 for (String s : whereList) {
                     String[] part = s.split(":", 2);
                     if (part.length == 2 && tableData.getColumnList().contains(part[0])) {
@@ -254,12 +284,12 @@ public class TableController extends AbstractController {
 
             }
 
-            String[] limit = queryParams.get("limit");
-            String[] offset = queryParams.get("offset");
-            String[] order = queryParams.get("order");
+            String limit = queryParams.getFirst("limit");
+            String offset = queryParams.getFirst("offset");
+            String order = queryParams.getFirst("order");
             List<ColumnOrder> finalOrders = new LinkedList<>();
-            if (order != null && order.length > 0 && order[0].length() > 0) {
-                String[] orders = order[0].split(",");
+            if (order != null && order.length() > 0) {
+                String[] orders = order.split(",");
                 for (String s : orders) {
                     String[] parts = s.split(":");
                     if (tableData.getColumnList().contains(parts[0])) {
@@ -275,33 +305,33 @@ public class TableController extends AbstractController {
             }
             Integer actualLimit = 10;
             Integer actualOffset = 0;
-            if (limit != null && limit.length > 0 && limit[0].length() > 0) {
+            if (limit != null && limit.length() > 0) {
                 try {
-                    actualLimit = Integer.valueOf(limit[0]);
+                    actualLimit = Integer.valueOf(limit);
                     if (actualLimit > 100) {
                         actualLimit = 100;
                     }
-                } catch (NumberFormatException e) {
+                } catch (NumberFormatException ignored) {
 
                 }
             }
 
-            if (offset != null && offset.length > 0 && offset[0].length() > 0) {
+            if (offset != null && offset.length() > 0) {
                 try {
-                    actualOffset = Integer.valueOf(offset[0]);
-                } catch (NumberFormatException e) {
+                    actualOffset = Integer.valueOf(offset);
+                } catch (NumberFormatException ignored) {
 
                 }
             }
 
 
             String columns = String.join(",", columnNames);
-            return paginatedResult("select ", columns, " from " + tableName, whereColumns, whereValues, finalOrders, actualOffset, actualLimit);
+            return paginatedResult(columns, " from " + tableName, whereColumns, whereValues, finalOrders, actualOffset, actualLimit);
         } catch (SQLException e) {
             logger.error("SQL Exception ", e);
             error("Failed to get columns of table[" + tableName + "]", e);
         }
-        return "{}";
+        return Response.status(Response.Status.INTERNAL_SERVER_ERROR);
     }
 
     @Override
@@ -355,7 +385,7 @@ public class TableController extends AbstractController {
                 connection.setAutoCommit(false);
                 for (String sql : sqlList) {
                     PreparedStatement ps = connection.prepareStatement(sql);
-                    info("Executing: " + sql);
+                    debug("Executing: " + sql);
                     ps.execute();
                     ps.close();
                 }
@@ -371,27 +401,35 @@ public class TableController extends AbstractController {
     }
 
     class MyRequest {
+        private Map map;
         private Map<String, Object> originalValue = new HashMap<>();
         private ContainerRequestContext containerRequestContext;
 
-        public MyRequest(ContainerRequestContext containerRequestContext) {
+        public MyRequest(ContainerRequestContext containerRequestContext) throws IOException {
             this.containerRequestContext = containerRequestContext;
+            InputStream is = containerRequestContext.getEntityStream();
+            if (is != null) {
+                try {
+                    map = objectMapper.readValue(is, Map.class);
+                    originalValue.putAll(map);
+                    List<String> removeKey = new LinkedList<>();
+                    for (Object o : map.keySet()) {
+                        String key = (String) o;
+                        if (ColumnsWeDontUpdate.contains(key)) {
+                            removeKey.add(key);
+                        }
+                    }
+                    for (String s : removeKey) {
+                        map.remove(s);
+                    }
+                } catch (JsonMappingException e) {
+                    map = null;
+                }
+            } else {
+            }
         }
 
         public Map getBodyValueMap() throws IOException {
-            InputStream is = containerRequestContext.getEntityStream();
-            final Map map = objectMapper.readValue(is, Map.class);
-            originalValue.putAll(map);
-            List<String> removeKey = new LinkedList<>();
-            for (Object o : map.keySet()) {
-                String key = (String) o;
-                if (ColumnsWeDontUpdate.contains(key)) {
-                    removeKey.add(key);
-                }
-            }
-            for (String s : removeKey) {
-                map.remove(s);
-            }
             return map;
         }
 
@@ -410,5 +448,14 @@ public class TableController extends AbstractController {
         public Object getOriginalValue(String key) {
             return originalValue.get(key);
         }
+
+        public String getQueryParam(String key) {
+            return containerRequestContext.getUriInfo().getQueryParameters().getFirst(key);
+        }
+
+        public MultivaluedMap<String, String> getQueryParameters() {
+            return containerRequestContext.getUriInfo().getQueryParameters();
+        }
+
     }
 }
