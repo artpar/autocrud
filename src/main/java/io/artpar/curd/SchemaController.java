@@ -50,8 +50,15 @@ public class SchemaController extends AbstractController {
             }
         });
 
+        boolean worldOk = false;
         for (final String tableName : tableNames.keySet()) {
+            if (tableName.equalsIgnoreCase("world")) {
+                worldOk = true;
+            }
              getAddMethods(tableName);
+        }
+        if (!worldOk) {
+            getAddMethods("world");
         }
     }
 

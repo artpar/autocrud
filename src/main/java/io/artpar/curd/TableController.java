@@ -48,6 +48,15 @@ public class TableController extends AbstractController {
         this.rootResource.addMethod("DELETE").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
     }
 
+    public static int getNthDigit(int permission, int count) {
+        int number = permission;
+        while (count > 0) {
+            count--;
+            number = number / 10;
+        }
+        return number % 10;
+    }
+
     public void initColumnData() {
         AutoColumns = new HashMap<>();
         AutoColumns.put("id", Arrays.asList("alter table " + tableName + " add column `id` int(11) unsigned  primary key auto_increment"));
@@ -89,7 +98,10 @@ public class TableController extends AbstractController {
     }
 
     private Object permissionCheck(MyRequest myRequest) throws IOException {
+        boolean canRead = false, canWrite = false;
+
         String referenceId = null;
+        User user = myRequest.getUser();
         switch (myRequest.getMethod().toLowerCase()) {
             case "get":
                 referenceId = myRequest.getQueryParam("reference_id");
@@ -105,13 +117,42 @@ public class TableController extends AbstractController {
         values.putSingle("reference_id", referenceId);
         Object res = getResult(values);
         if (res instanceof TableResult) {
-            Map map= (Map) ((TableResult) res).getData().get(0);
+            Map map = (Map) ((TableResult) res).getData().get(0);
             int permission = (int) map.get("permission");
+            Integer ownerUserId = (Integer) map.get("user_id");
+            Integer ownerGroupId = (Integer) map.get("usergroup_id");
+            int count = 0;
+            int checkAgainst = getUserCurrentPermissionValue(user, permission, ownerUserId, ownerGroupId);
+            if ((checkAgainst & 1) == 1) {
+                canRead = true;
+            }
+            if ((checkAgainst & 2) == 2) {
+                canWrite = true;
+            }
+
+            final boolean isGet = myRequest.getMethod().equalsIgnoreCase("get");
+            if ((!canWrite && !isGet) || (!canRead && isGet)) {
+                return Response.status(Response.Status.UNAUTHORIZED);
+            }
         } else {
             return Response.status(Response.Status.NOT_FOUND);
         }
 
         return null;
+    }
+
+    private int getUserCurrentPermissionValue(User user, int permission, Integer ownerUserId, Integer ownerGroupId) {
+        UserType type = UserType.World;
+        int count = 0;
+
+        if (Objects.equals(ownerUserId, user.getId())) {
+            type = UserType.User;
+            count = 2;
+        } else if (user.getUserGroupId().contains(ownerGroupId)) {
+            type = UserType.Group;
+            count = 1;
+        }
+        return getNthDigit(permission, count);
     }
 
     public Object deleteItem(MyRequest containerRequestContext) throws IOException, SQLException {
@@ -348,10 +389,38 @@ public class TableController extends AbstractController {
         return anInt;
     }
 
+
+    public void checkTableExist() throws SQLException {
+        Connection conn = dataSource.getConnection();
+        ResultSet table = conn.getMetaData().getTables(null, null, tableName, null);
+        boolean ok = table.next();
+        table.close();
+        conn.close();
+        if (!ok) {
+            logger.error("Table [" + tableName + "] does not exist. Creating it.");
+            conn = dataSource.getConnection();
+            PreparedStatement ps = conn.prepareStatement("create table " + tableName + " ( " +
+                    "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
+                    "name VARCHAR(50) not NULL , " +
+                    "user_id int(11) default 1 REFERENCES user(id), " +
+                    "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
+                    "reference_id varchar(50) not null UNIQUE)"
+            );
+            ps.execute();
+            ps.close();
+            conn.close();
+
+        } else {
+            logger.info("Table [" + tableName + "] is ok.");
+        }
+    }
+
     @Override
     protected void init() throws SQLException {
         this.tableName = this.root;
         this.tableData = new TableData();
+        checkTableExist();
+        initWorldTable();
         initColumnData();
 
         Connection connection = this.dataSource.getConnection();
@@ -400,6 +469,27 @@ public class TableController extends AbstractController {
         tableData.setColumnList(columnNames);
     }
 
+    private void initWorldTable() throws SQLException {
+        Connection conn = dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement("SELECT * FROM world WHERE name = ?");
+        ps.setString(1, tableName);
+        ResultSet rs = ps.executeQuery();
+        boolean ok = rs.next();
+        if (!ok) {
+            PreparedStatement ps1 = conn.prepareStatement("INSERT INTO world (name, reference_id, user_id, usergroup_id, status) VALUES (?,?,1,1,'active')");
+            ps1.setString(1, tableName);
+            ps1.setString(2, UUID.randomUUID().toString());
+            ps.execute();
+            ps.close();
+            rs.close();
+            conn.close();
+            logger.info("Table info does not exist in world for " + tableName + ". Creating it");
+        } else {
+            logger.info("The world knows about this table");
+        }
+
+    }
+
     class MyRequest {
         private Map map;
         private Map<String, Object> originalValue = new HashMap<>();
@@ -427,6 +517,10 @@ public class TableController extends AbstractController {
                 }
             } else {
             }
+        }
+
+        public User getUser() {
+            return (User) containerRequestContext.getProperty("user");
         }
 
         public Map getBodyValueMap() throws IOException {
