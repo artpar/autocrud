@@ -21,8 +21,8 @@ public class SchemaController extends AbstractController {
         return tableNames.size();
     }
 
-    public SchemaController(String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
-        super(root, dataSource, objectMapper);
+    public SchemaController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+        super(context, root, dataSource, objectMapper);
     }
 
 
@@ -51,9 +51,7 @@ public class SchemaController extends AbstractController {
         });
 
         for (final String tableName : tableNames.keySet()) {
-            Resource.Builder resourceBuilder = Resource.builder();
-            resourceBuilder = getAddMethods(tableName, resourceBuilder);
-            rootResource.addChildResource(resourceBuilder.build());
+             getAddMethods(tableName);
         }
     }
 
@@ -62,28 +60,27 @@ public class SchemaController extends AbstractController {
         methodBuilder.produces(MediaType.APPLICATION_JSON).handledBy(handler);
     }
 
-    private Resource.Builder getAddMethods(final String tableName, Resource.Builder resourceBuilder) throws SQLException, NoSuchMethodException {
-        resourceBuilder.path(tableName);
-        info("    GET    /%s", tableName);
+    private void getAddMethods(final String tableName) throws SQLException, NoSuchMethodException {
+//        resourceBuilder.path(tableName);
 
-        TableController tableController = new TableController(tableName, dataSource, objectMapper);
+        TableController tableController = new TableController(this.context + "/", tableName, dataSource, objectMapper);
         this.rootResource.addChildResource(tableController.getRootResource().build());
 
-        Resource.Builder getIndividual = Resource.builder();
-        getIndividual.path(tableName + "/{id}");
+//        Resource.Builder getIndividual = Resource.builder();
+//        getIndividual.path(tableName + "/{id}");
 
 
-        addMethod(getIndividual, "GET",new Inflector<ContainerRequestContext, Object>() {
-            @Override
-            public Object apply(ContainerRequestContext containerRequestContext) {
-                return null;
-            }
-        } );
+//        addMethod(getIndividual, "GET",new Inflector<ContainerRequestContext, Object>() {
+//            @Override
+//            public Object apply(ContainerRequestContext containerRequestContext) {
+//                return null;
+//            }
+//        } );
+//
+//        resourceBuilder.addChildResource(getIndividual.build());
 
-        resourceBuilder.addChildResource(getIndividual.build());
 
-
-        return resourceBuilder;
+//        return resourceBuilder;
     }
 
 }

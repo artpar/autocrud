@@ -24,34 +24,68 @@ public abstract class AbstractController {
 //    protected final DatabaseMetaData databaseMetaData;
     protected final ObjectMapper objectMapper;
     protected final Map<String, TableData> tableNames = new HashMap<>();
-    private final Logger logger = LoggerFactory.getLogger(SchemaController.class);
+    protected final Logger logger = LoggerFactory.getLogger(SchemaController.class);
     protected Resource.Builder rootResource;
+    protected String context;
 
 
+    public TableResult paginatedResult(String select, String columns, String restOfTheClause,
+                                       List<String> whereColumns, List<Object> whereValues,
+                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit)
+            throws SQLException {
 
-    public TableResult paginatedResult(String select, String columns, String restOfTheClause, List<ColumnOrder> orderColumns, Integer offset, Integer limit) throws SQLException {
-        String countQuery = "select count(*) " + restOfTheClause;
-        Connection connection = dataSource.getConnection();
-        PreparedStatement preparedStatement = connection.prepareStatement(countQuery);
-        ResultSet rs = preparedStatement.executeQuery();
-        rs.next();
-        int filteredCount = rs.getInt(1);
-        rs.close();
-        preparedStatement.close();
-        connection.close();
-        String beforeLimitQuery = "select " + columns + restOfTheClause;
+        String restOfTheClauseWithWhereClause = restOfTheClause;
+        if (whereColumns.size() > 0) {
+            restOfTheClauseWithWhereClause = restOfTheClause + " where " + keyValuePairSeparatedBy(whereColumns, " and ");
+        }
+        String countQuery = "select count(*) " + restOfTheClauseWithWhereClause;
+        int filteredCount = getInt(countQuery, whereValues);
+        int totalCount = getInt("select count(*) " + restOfTheClause, new LinkedList<>());
+        String beforeLimitQuery = "select " + columns + restOfTheClauseWithWhereClause;
         if (orderColumns.size() > 0) {
             beforeLimitQuery = beforeLimitQuery + " order by  " + join(",", orderColumns);
         }
-        List data = getList(beforeLimitQuery + " limit " + String.valueOf(offset) + "," + String.valueOf(limit));
+        List data = getList(beforeLimitQuery + " limit " + String.valueOf(offset) + "," + String.valueOf(limit), whereValues);
 
         TableResult tr = new TableResult();
         tr.setFilteredCount(filteredCount);
         tr.setOffset(offset);
         tr.setSize(limit);
         tr.setData(data);
-        tr.setTotalCount(getTotalCount());
+        tr.setTotalCount(totalCount);
         return tr;
+    }
+
+    private int getInt(String countQuery, List<Object> whereValues) throws SQLException {
+        logger.info("Execute count query: " + countQuery);
+        Connection connection = dataSource.getConnection();
+        PreparedStatement preparedStatement = connection.prepareStatement(countQuery);
+        for (int i = 0; i < whereValues.size(); i++) {
+            Object whereValue = whereValues.get(i);
+            preparedStatement.setObject(i+1, whereValue);
+        }
+
+        ResultSet rs = preparedStatement.executeQuery();
+        rs.next();
+        int filteredCount = rs.getInt(1);
+        rs.close();
+        preparedStatement.close();
+        connection.close();
+        return filteredCount;
+    }
+
+    private String keyValuePairSeparatedBy(List<String> whereColumns, String a) {
+        String s = "";
+        int lastSecond = whereColumns.size() - 1;
+        for (int i = 0; i < whereColumns.size(); i++) {
+            String whereColumn = whereColumns.get(i);
+            s = s + whereColumn + "=?";
+            if (i < lastSecond) {
+                s = s + a;
+            }
+        }
+        return s;
+
     }
 
     private String join (String s, List items) {
@@ -170,7 +204,8 @@ public abstract class AbstractController {
     }
 
 
-    public AbstractController(String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    public AbstractController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+        this.context = context + root;
         this.root = root;
         this.rootResource = Resource.builder();
         this.rootResource.path(this.root);
@@ -180,11 +215,15 @@ public abstract class AbstractController {
         init();
     }
 
-    protected List getList(String sql) throws SQLException {
+    protected List getList(String sql, List<Object> questions) throws SQLException {
         logger.info("Query for get list " + this.root);
         logger.info(sql);
         Connection connection = dataSource.getConnection();
         PreparedStatement statement = connection.prepareStatement(sql);
+        for (int i = 0; i < questions.size(); i++) {
+            Object whereValue = questions.get(i);
+            statement.setObject(i+1, whereValue);
+        }
         ResultSet rs = statement.executeQuery();
         RowSetDynaClass rsdc = new RowSetDynaClass(rs);
         rs.close();
