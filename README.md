@@ -9,6 +9,12 @@ Works with
 - any other jersey server
 
 
+IMPORTANT
+this is not for guest users in your application
+A filter should authenticate and insert a request property 
+
+https://github.com/artpar/autocrud/blob/master/src/test/java/io/artpar/test/InsertDummyUserFilter.java
+
 Examples:
 
 Dropwizard
