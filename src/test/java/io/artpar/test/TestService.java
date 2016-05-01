@@ -8,6 +8,9 @@ import io.dropwizard.Application;
 import io.dropwizard.Configuration;
 import io.dropwizard.setup.Environment;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+
 /**
  * Created by parth on 30/4/16.
  */

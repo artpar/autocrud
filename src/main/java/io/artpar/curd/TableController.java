@@ -464,15 +464,19 @@ public class TableController extends AbstractController {
     protected void init() throws SQLException {
         this.tableName = this.root;
         this.tableData = new TableData();
+        initColumnData();
         checkTableExist();
         initWorldTable();
-        initColumnData();
 
-        Connection connection = this.dataSource.getConnection();
-        DatabaseMetaData databaseMetaData = connection.getMetaData();
+
+
+        Connection connection1 = this.dataSource.getConnection();
+        DatabaseMetaData databaseMetaData = connection1.getMetaData();
         ResultSet rs = databaseMetaData.getColumns(null, null, tableName, null);
 //        debugColumnNames(rs);
         List<String> columnNames = getSingleColumnFromResultSet(rs, "COLUMN_NAME");
+        rs.close();
+        connection1.close();
 
         Map<String, Boolean> found = new HashMap<>();
         for (String col : AutoColumns.keySet()) {
@@ -494,7 +498,7 @@ public class TableController extends AbstractController {
                 error("Column %s not found in table %s", stringBooleanEntry.getKey(), tableName);
                 final List<String> sqlList = AutoColumns.get(stringBooleanEntry.getKey());
 
-                connection = dataSource.getConnection();
+                Connection connection = dataSource.getConnection();
                 connection.setAutoCommit(false);
                 for (String sql : sqlList) {
                     PreparedStatement ps = connection.prepareStatement(sql);
@@ -509,8 +513,6 @@ public class TableController extends AbstractController {
             }
         }
 
-        connection.close();
-        rs.close();
         tableData.setColumnList(columnNames);
     }
 
@@ -521,23 +523,25 @@ public class TableController extends AbstractController {
         ResultSet rs = ps.executeQuery();
         boolean ok = rs.next();
         if (!ok) {
+            logger.info("Table info does not exist in world for " + tableName + ". Creating it");
             PreparedStatement ps1 = conn.prepareStatement("INSERT INTO world (name, reference_id, user_id, usergroup_id, status, permission) VALUES (?,?,1,1,'active',755)");
             ps1.setString(1, tableName);
             ps1.setString(2, UUID.randomUUID().toString());
-            ps.execute();
-            ps.close();
-            rs.close();
-            conn.close();
+            ps1.execute();
+            ps1.close();
             tablePermission = 755;
             userId = 1L;
             userGroupId = 1L;
-            logger.info("Table info does not exist in world for " + tableName + ". Creating it");
         } else {
             tablePermission = rs.getInt("permission");
             userId = rs.getLong("user_id");
             userGroupId = rs.getLong("usergroup_id");
             logger.info("The world knows about this table");
         }
+        rs.close();
+        ps.close();
+        conn.close();
+
 
     }
 
