@@ -7,7 +7,18 @@ import java.util.List;
  */
 public class User implements UserInterface {
     Long id;
+    private List<Long> groupIdsOfUser;
     List<Long> userGroupId;
+
+    public User(Long id, List<Long> groupIdsOfUser) {
+
+        this.id = id;
+        this.groupIdsOfUser = groupIdsOfUser;
+    }
+
+    public User() {
+
+    }
 
     @Override
     public Long getId() {

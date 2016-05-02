@@ -5,6 +5,7 @@ import org.glassfish.jersey.process.Inflector;
 import org.glassfish.jersey.server.model.Resource;
 import org.glassfish.jersey.server.model.ResourceMethod;
 
+import javax.annotation.security.RolesAllowed;
 import javax.sql.DataSource;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.MediaType;
@@ -50,21 +51,27 @@ public class SchemaController extends AbstractController {
 
         addMethod(rootResource, "GET", new Inflector<ContainerRequestContext, Object>() {
             @Override
+            @RolesAllowed("ROLE_USER")
             public Set<String> apply(ContainerRequestContext containerRequestContext) {
                 return tableNames.keySet();
             }
         });
 
         boolean worldOk = false;
+        List<String> finalList = new LinkedList<>();
         for (final String tableName : tableNames.keySet()) {
             if (tableName.equalsIgnoreCase("world")) {
                 worldOk = true;
             }
-             getAddMethods(tableName);
+             finalList.add(tableName);
         }
         if (!worldOk) {
             getAddMethods("world");
         }
+        for (String s : finalList) {
+            getAddMethods(s);
+        }
+
     }
 
     private void addMethod(Resource.Builder resourceBuilder, String method, Inflector<ContainerRequestContext, Object> handler) {

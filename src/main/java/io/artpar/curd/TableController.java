@@ -3,7 +3,9 @@ package io.artpar.curd;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.glassfish.jersey.server.ContainerRequest;
+import org.glassfish.jersey.server.model.Resource;
 
+import javax.annotation.security.RolesAllowed;
 import javax.sql.DataSource;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.*;
@@ -21,7 +23,7 @@ import java.util.Date;
 public class TableController extends AbstractController {
 
 
-    private static final List<String> UserTables = Arrays.asList("user", "user_usergroup", "usergroup");
+    private static final List<String> UserTables = Arrays.asList("user_usergroup");
     private static final Random rng = new Random(new Date().getTime());
     private Map<String, List<String>> AutoColumns;
     private String tableName;
@@ -49,6 +51,12 @@ public class TableController extends AbstractController {
 
         debug("Added DELETE " + this.context);
         this.rootResource.addMethod("DELETE").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+
+
+        debug("Added GET " + this.context + "/mine");
+        Resource.Builder re = Resource.builder();
+        re.path("mine").addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+        this.rootResource.addChildResource( re.build() );
     }
 
     public static int getNthDigit(int permission, int count) {
@@ -71,13 +79,14 @@ public class TableController extends AbstractController {
                 "alter table " + tableName + " add constraint " + tableName + "_reference_id_uniq_" + rng.nextInt(10000 - 1) + " unique(reference_id)"));
         AutoColumns.put("permission", Arrays.asList("alter table " + tableName + " add column permission int(4) not null default 755"));
         AutoColumns.put("user_id", Arrays.asList("alter table " + tableName + " add column user_id int(11)"
-                , "update " + tableName + " set user_id = (select min(id) from user)"
+                , "update " + tableName + " set user_id = (select id from (select min(id) id from user) x )"
                 , "alter table " + tableName + " add constraint " + tableName + "_user_id_" + rng.nextInt(10000 - 1) + " foreign key (user_id) references user(id) "));
         AutoColumns.put("usergroup_id", Arrays.asList("alter table " + tableName + " add column usergroup_id int(11)"
-                , "update " + tableName + " set usergroup_id = (select min(id) from usergroup)"
+                , "update " + tableName + " set usergroup_id = (select id from ( select min(id) id from usergroup) x )"
                 , "alter table " + tableName + " add constraint " + tableName + "_usergroup_id_" + rng.nextInt(10000 - 1) + " foreign key (usergroup_id) references usergroup(id) "));
     }
 
+    @RolesAllowed("ROLE_USER")
     public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
         final String path = containerRequestContext.getUriInfo().getPath();
         final int lastSlash = path.lastIndexOf("/");
@@ -87,23 +96,32 @@ public class TableController extends AbstractController {
         if (re != null) {
             return re;
         }
-        switch (containerRequestContext.getMethod().toLowerCase()) {
-            case "get":
+
+
+        String relative = path.substring(path.indexOf(this.root) + this.root.length());
+
+        switch (containerRequestContext.getMethod().toLowerCase() + " /" + relative) {
+            case "get /":
                 return this.list(myRequest);
-            case "post":
+            case "post /":
                 return this.newItem(myRequest);
-            case "put":
+            case "put /":
                 return this.updateItem(myRequest);
-            case "delete":
+            case "delete /":
                 return this.deleteItem(myRequest);
+            case "get /mine":
+                return this.listMyItem(myRequest);
         }
         return Response.status(Response.Status.NOT_IMPLEMENTED);
     }
 
+    private Object listMyItem(MyRequest myRequest) {
+        MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
+        params.putSingle("user_id", String.valueOf(myRequest.getUser().getId()));
+        return getResult(params, myRequest.getUser());
+    }
+
     private Object permissionCheck(MyRequest myRequest) throws IOException {
-        if (Objects.equals(tableName, "user")) {
-            return null;
-        }
         UserInterface userInterface = myRequest.getUser();
 
         final boolean isGet = myRequest.getMethod().equalsIgnoreCase("get");
@@ -130,21 +148,21 @@ public class TableController extends AbstractController {
         Object res = getResult(values, userInterface);
         if (res instanceof TableResult) {
             for (Object o : ((TableResult) res).getData()) {
-                Map map = (Map)o;
+                Map map = (Map) o;
                 int permission = (int) map.get("permission");
 
                 Long ownerUserId = 1L;
                 try {
 
-                    ownerUserId = Long.valueOf( String.valueOf( map.get("user_id")) );
-                }catch (Exception e) {
+                    ownerUserId = Long.valueOf(String.valueOf(map.get("user_id")));
+                } catch (Exception e) {
 
                 }
                 Long ownerGroupId = 1L;
                 try {
 
-                    ownerGroupId = Long.valueOf(String.valueOf( map.get("usergroup_id") ));
-                }catch (Exception e) {
+                    ownerGroupId = Long.valueOf(String.valueOf(map.get("usergroup_id")));
+                } catch (Exception e) {
 
                 }
                 if (isOk(isGet, userInterface, permission, ownerUserId, ownerGroupId)) {
@@ -410,12 +428,17 @@ public class TableController extends AbstractController {
     public boolean isPermissionOk(boolean isGet, UserInterface userInterface, Map obj) {
         int permission = (int) obj.get("permission");
         Object user_id = obj.get("user_id");
-        if (user_id == null )  {
+        if (user_id == null) {
             user_id = 1L;
+        } else {
+            user_id = Long.valueOf(String.valueOf(user_id));
         }
         Object usergroup_id = obj.get("usergroup_id");
         if (usergroup_id == null) {
             usergroup_id = 1L;
+        } else {
+
+            usergroup_id = Long.valueOf(String.valueOf(usergroup_id));
         }
         return isOk(isGet, userInterface, permission, (Long) user_id, (Long) usergroup_id);
     }
@@ -444,13 +467,27 @@ public class TableController extends AbstractController {
         if (!ok) {
             logger.error("Table [" + tableName + "] does not exist. Creating it.");
             conn = dataSource.getConnection();
-            PreparedStatement ps = conn.prepareStatement("create table " + tableName + " ( " +
-                    "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
-                    "name VARCHAR(50) not NULL , " +
-                    "user_id int(11) default 1 REFERENCES user(id), " +
-                    "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
-                    "reference_id varchar(50) not null UNIQUE)"
-            );
+            PreparedStatement ps;
+            if (tableName.equalsIgnoreCase("world")) {
+
+                ps = conn.prepareStatement("create table " + tableName + " ( " +
+                        "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
+                        "name VARCHAR(50) not NULL , " +
+                        "user_id int(11) default 1 REFERENCES user(id), " +
+                        "default_permission int(4) default 755, " +
+                        "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
+                        "reference_id varchar(50) not null UNIQUE)"
+                );
+            } else {
+                ps = conn.prepareStatement("create table " + tableName + " ( " +
+                        "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
+                        "name VARCHAR(50) not NULL , " +
+                        "user_id int(11) default 1 REFERENCES user(id), " +
+                        "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
+                        "reference_id varchar(50) not null UNIQUE)"
+                );
+
+            }
             ps.execute();
             ps.close();
             conn.close();
@@ -464,9 +501,9 @@ public class TableController extends AbstractController {
     protected void init() throws SQLException {
         this.tableName = this.root;
         this.tableData = new TableData();
-        initColumnData();
         checkTableExist();
         initWorldTable();
+        initColumnData();
 
 
 
@@ -517,31 +554,54 @@ public class TableController extends AbstractController {
     }
 
     private void initWorldTable() throws SQLException {
-        Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement("SELECT * FROM world WHERE name = ?");
-        ps.setString(1, tableName);
-        ResultSet rs = ps.executeQuery();
-        boolean ok = rs.next();
-        if (!ok) {
-            logger.info("Table info does not exist in world for " + tableName + ". Creating it");
-            PreparedStatement ps1 = conn.prepareStatement("INSERT INTO world (name, reference_id, user_id, usergroup_id, status, permission) VALUES (?,?,1,1,'active',755)");
-            ps1.setString(1, tableName);
-            ps1.setString(2, UUID.randomUUID().toString());
-            ps1.execute();
-            ps1.close();
-            tablePermission = 755;
-            userId = 1L;
-            userGroupId = 1L;
-        } else {
-            tablePermission = rs.getInt("permission");
-            userId = rs.getLong("user_id");
-            userGroupId = rs.getLong("usergroup_id");
-            logger.info("The world knows about this table");
-        }
-        rs.close();
-        ps.close();
-        conn.close();
+        try {
 
+            Connection conn = dataSource.getConnection();
+            ResultSet rs;
+            if (tableName.equalsIgnoreCase("world")) {
+                rs = conn.getMetaData().getTables(null, null, tableName, null);
+            } else {
+                PreparedStatement ps = conn.prepareStatement("SELECT * FROM world WHERE name = ?");
+                ps.setString(1, tableName);
+                rs = ps.executeQuery();
+            }
+
+
+
+            boolean ok = rs.next();
+            if (!ok) {
+                logger.info("Table info does not exist in world for " + tableName + ". Creating it");
+                PreparedStatement ps1 = conn.prepareStatement("INSERT INTO world (name, reference_id, user_id, usergroup_id, status, permission) VALUES (?,?,1,1,'active',755)");
+                ps1.setString(1, tableName);
+                ps1.setString(2, UUID.randomUUID().toString());
+                ps1.execute();
+                ps1.close();
+                tablePermission = 755;
+                userId = 1L;
+                userGroupId = 1L;
+            } else {
+                if (!tableName.equalsIgnoreCase("world")) {
+                    tablePermission = rs.getInt("permission");
+                    userId = rs.getLong("user_id");
+                    userGroupId = rs.getLong("usergroup_id");
+                    logger.info("The world knows about this table");
+                } else {
+                    tablePermission = 755;
+                    userId = 1L;
+                    userGroupId = 1L;
+                    logger.info("The world is visible now");
+                }
+
+
+
+            }
+            rs.close();
+//            ps.close();
+            conn.close();
+
+        } catch (Exception t) {
+            throw new RuntimeException("For table " + tableName, t);
+        }
 
     }
 
@@ -549,6 +609,7 @@ public class TableController extends AbstractController {
         private Map map;
         private Map<String, Object> originalValue = new HashMap<>();
         private ContainerRequestContext containerRequestContext;
+
 
         public MyRequest(ContainerRequestContext containerRequestContext) throws IOException {
             this.containerRequestContext = containerRequestContext;
