@@ -145,15 +145,15 @@ public abstract class AbstractController {
     }
 
 
-    public AbstractController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    public AbstractController( String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
         this.context = context + root;
         this.root = root;
         this.rootResource = Resource.builder();
+        this.rootResource.name("Route for [" + root + "]");
         this.rootResource.path(this.root);
         this.dataSource = dataSource;
         this.objectMapper = objectMapper;
         objectMapper.addMixIn(BasicDynaBean.class, SchemaController.DynaJsonMixin.class);
-        init();
     }
 
     protected List getList(String sql, List<Object> questions) throws SQLException {

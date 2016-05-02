@@ -27,8 +27,9 @@ public class SchemaController extends AbstractController {
         return tableNames.size();
     }
 
-    public SchemaController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    public SchemaController(  String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
         super(context, root, dataSource, objectMapper);
+        init();
     }
 
 
@@ -82,8 +83,10 @@ public class SchemaController extends AbstractController {
     private void getAddMethods(final String tableName) throws SQLException, NoSuchMethodException {
 //        resourceBuilder.path(tableName);
 
-        TableController tableController = new TableController(this.context + "/", tableName, dataSource, objectMapper);
-        this.rootResource.addChildResource(tableController.getRootResource().build());
+        AbstractTableController abstractTableController = new TableController(tableName, this.context + "/", tableName, dataSource, objectMapper);
+        this.rootResource.addChildResource(abstractTableController.getRootResource().build());
+        MineController tableController1 = new MineController(tableName, this.context + "/", tableName + "/mine", dataSource, objectMapper);
+        this.rootResource.addChildResource(tableController1.getRootResource().build());
 
 //        Resource.Builder getIndividual = Resource.builder();
 //        getIndividual.path(tableName + "/{id}");
