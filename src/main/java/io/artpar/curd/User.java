@@ -6,11 +6,10 @@ import java.util.List;
  * Created by parth on 30/4/16.
  */
 public class User implements UserInterface {
-    Long id;
-    private List<Long> groupIdsOfUser;
-    List<Long> userGroupId;
+    String id;
+    private List<String> groupIdsOfUser;
 
-    public User(Long id, List<Long> groupIdsOfUser) {
+    public User(String id, List<String> groupIdsOfUser) {
 
         this.id = id;
         this.groupIdsOfUser = groupIdsOfUser;
@@ -21,20 +20,19 @@ public class User implements UserInterface {
     }
 
     @Override
-    public Long getId() {
+    public String getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(String id) {
         this.id = id;
     }
 
-    @Override
-    public List<Long> getUserGroupId() {
-        return userGroupId;
+    public List<String> getGroupIdsOfUser() {
+        return groupIdsOfUser;
     }
 
-    public void setUserGroupId(List<Long> userGroupId) {
-        this.userGroupId = userGroupId;
+    public void setGroupIdsOfUser(List<String> groupIdsOfUser) {
+        this.groupIdsOfUser = groupIdsOfUser;
     }
 }

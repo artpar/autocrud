@@ -17,8 +17,8 @@ public class InsertDummyUserFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
         final User o = new User();
-        o.setId(1L);
-        o.setUserGroupId(Arrays.asList(1L, 2L));
+        o.setId("1");
+        o.setGroupIdsOfUser(Arrays.asList("1", "2"));
         requestContext.setProperty("user", o);
 
     }

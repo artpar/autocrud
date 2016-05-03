@@ -6,7 +6,7 @@ import java.util.List;
  * Created by parth on 30/4/16.
  */
 public interface UserInterface {
-    Long getId();
+    String getId();
 
-    List<Long> getUserGroupId();
+    List<String> getGroupIdsOfUser();
 }

@@ -1,10 +1,6 @@
 package io.artpar.curd;
 
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.dropwizard.jersey.jackson.JsonProcessingExceptionMapper;
-import org.glassfish.jersey.server.ContainerRequest;
 import org.glassfish.jersey.server.model.Resource;
 
 import javax.annotation.security.RolesAllowed;
@@ -12,12 +8,9 @@ import javax.sql.DataSource;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.*;
 import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Method;
-import java.net.URI;
 import java.sql.*;
 import java.util.*;
-import java.util.Date;
 
 /**
  * Created by parth on 30/4/16.
@@ -65,19 +58,31 @@ public class TableController extends AbstractTableController {
 
         String relative = path.substring(path.indexOf(this.root) + this.root.length()) + "/";
 
-        switch (containerRequestContext.getMethod().toLowerCase() + " " + relative) {
-            case "get /":
-                return this.list(myRequest);
-            case "post /":
-                return this.newItem(myRequest);
-            case "put /":
-                return this.updateItem(myRequest);
-            case "delete /":
-                return this.deleteItem(myRequest);
-            case "options /":
-                return this.listMyItem(myRequest);
+        try {
+            Object result = null;
+            switch (containerRequestContext.getMethod().toLowerCase() + " " + relative) {
+                case "get /":
+                    result = this.list(myRequest);
+                    break;
+                case "post /":
+                    result = this.newItem(myRequest);
+                    break;
+                case "put /":
+                    result = this.updateItem(myRequest);
+                    break;
+                case "delete /":
+                    result = this.deleteItem(myRequest);
+                    break;
+                case "options /":
+                    result = this.listMyItem(myRequest);
+                    break;
+            }
+            return Response.ok(result, MediaType.APPLICATION_JSON_TYPE).build();
+        } catch (Exception e) {
+            logger.error("Exception: ", e);
+            return Response.status(Response.Status.NOT_ACCEPTABLE).entity(new ApiResponse(e.getMessage())).build();
         }
-        return Response.status(Response.Status.NOT_IMPLEMENTED);
+//        return Response.status(Response.Status.NOT_IMPLEMENTED);
     }
 
     private Object listMyItem(MyRequest myRequest) {
@@ -101,13 +106,13 @@ public class TableController extends AbstractTableController {
         }
 
 
-        final Object reference_id = containerRequestContext.getOriginalValue("reference_id");
-        if (reference_id == null || reference_id.toString().length() < 1) {
+        final Object referenceId = containerRequestContext.getOriginalValue("referenceId");
+        if (referenceId == null || referenceId.toString().length() < 1) {
             return Response.status(Response.Status.BAD_REQUEST);
         }
 
 
-        String referenceId = String.valueOf(reference_id);
+//        String referenceId = String.valueOf(referenceId);
         valueList.add(referenceId);
 
         String sql = "delete from " + tableName + " ";
@@ -195,13 +200,23 @@ public class TableController extends AbstractTableController {
         List<Object> valueList = new LinkedList<>();
         String referenceId = UUID.randomUUID().toString();
         values.put("user_id", user.getId());
-        values.put("usergroup_id", user.getUserGroupId().get(0));
+        values.put("usergroup_id", user.getGroupIdsOfUser().get(0));
         values.put("reference_id", referenceId);
         for (Object col : values.keySet()) {
             String colName = (String) col;
             if (allColumns.contains(colName)) {
                 colsToInsert.add(colName);
-                valueList.add(values.get(colName));
+                Object columnValue = values.get(colName);
+                if (foreignKeyMap.containsKey(colName)) {
+                    try {
+                        UUID uuid = UUID.fromString(String.valueOf(columnValue));
+                        ForeignKey fk = foreignKeyMap.get(colName);
+                        columnValue = referenceIdToId(fk.getReferenceTableName(), columnValue);
+                    } catch (IllegalArgumentException e) {
+
+                    }
+                }
+                valueList.add(columnValue);
             }
         }
 
@@ -216,12 +231,47 @@ public class TableController extends AbstractTableController {
         ps.execute();
         ps.close();
         connection.close();
-        return values;
+        MultivaluedMap<String, String> map = new MultivaluedHashMap<>();
+        map.putSingle("where","reference_id:" + referenceId);
+        return ((TableResult) getResult(map, user)).getData().get(0);
+//        return values;
+    }
+
+    private Long referenceIdToId(String referenceTable, Object columnValue) throws SQLException {
+        Connection conn = this.dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement("select id from " + referenceTable + " where reference_id = ?");
+        ps.setObject(1, columnValue);
+        ResultSet rs = ps.executeQuery();
+        rs.next();
+        long id = rs.getLong(1);
+        rs.close();
+        ps.close();
+        conn.close();
+        return id;
     }
 
     public Object list(MyRequest containerRequestContext) {
         MultivaluedMap<String, String> queryParams = containerRequestContext.getQueryParameters();
         return getResult(queryParams, containerRequestContext.getUser());
+    }
+
+    public static class ApiResponse {
+        String message;
+
+        public ApiResponse(String message) {
+            this.message = message;
+        }
+
+        public ApiResponse() {
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public void setMessage(String message) {
+            this.message = message;
+        }
     }
 
 

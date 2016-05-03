@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 public abstract class AbstractController {
     protected final String root;
     protected final DataSource dataSource;
-//    protected final DatabaseMetaData databaseMetaData;
+    //    protected final DatabaseMetaData databaseMetaData;
     protected final ObjectMapper objectMapper;
     protected final Map<String, TableData> tableNames = new HashMap<>();
     protected final Logger logger = LoggerFactory.getLogger(SchemaController.class);
@@ -29,8 +29,18 @@ public abstract class AbstractController {
     protected String context;
 
 
-    public abstract boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj);
+    public AbstractController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+        this.context = context + root;
+        this.root = root;
+        this.rootResource = Resource.builder();
+        this.rootResource.name("Route for [" + root + "]");
+        this.rootResource.path(this.root);
+        this.dataSource = dataSource;
+        this.objectMapper = objectMapper;
+        objectMapper.addMixIn(BasicDynaBean.class, SchemaController.DynaJsonMixin.class);
+    }
 
+    public abstract boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj);
 
     public TableResult paginatedResult(String columns, String restOfTheClause,
                                        List<String> whereColumns, List<Object> whereValues,
@@ -52,7 +62,7 @@ public abstract class AbstractController {
         List allowed = new LinkedList<>();
         for (Object o : data) {
             Map m = (Map) o;
-            if(isPermissionOk(true, userInterface, m)) {
+            if (isPermissionOk(true, userInterface, m)) {
                 allowed.add(o);
             }
         }
@@ -72,7 +82,7 @@ public abstract class AbstractController {
         PreparedStatement preparedStatement = connection.prepareStatement(countQuery);
         for (int i = 0; i < whereValues.size(); i++) {
             Object whereValue = whereValues.get(i);
-            preparedStatement.setObject(i+1, whereValue);
+            preparedStatement.setObject(i + 1, whereValue);
         }
 
         ResultSet rs = preparedStatement.executeQuery();
@@ -98,10 +108,10 @@ public abstract class AbstractController {
 
     }
 
-    private String join (String s, List items) {
+    private String join(String s, List items) {
         String q = "";
-        for (int i = 0;i < items.size() - 2; i++) {
-            q = q +  items.get(i).toString() + s;
+        for (int i = 0; i < items.size() - 2; i++) {
+            q = q + items.get(i).toString() + s;
         }
         q = q + items.get(items.size() - 1).toString();
         return q;
@@ -117,13 +127,13 @@ public abstract class AbstractController {
      * packaged by the GET or POST method, that is, it
      * should have key-value pairs in the form <i>key=value</i>,
      * with each pair separated from the next by a &amp; character.
-     * <p>
+     * <p/>
      * <p>A key can appear more than once in the query string
      * with different values. However, the key appears only once in
      * the hashtable, with its value being
      * an array of strings containing the multiple values sent
      * by the query string.
-     * <p>
+     * <p/>
      * <p>The keys and values in the hashtable are stored in their
      * decoded form, so
      * any + characters are converted to spaces, and characters
@@ -131,29 +141,16 @@ public abstract class AbstractController {
      * converted to ASCII characters.
      *
      * @param s a string containing the query to be parsed
-     * @throws IllegalArgumentException if the query string is invalid
      * @return a <code>HashTable</code> object built
      * from the parsed key-value pairs
+     * @throws IllegalArgumentException if the query string is invalid
      */
 
     /*
          * Parse a name in the query string.
          */
-
     public Resource.Builder getRootResource() {
         return rootResource;
-    }
-
-
-    public AbstractController( String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
-        this.context = context + root;
-        this.root = root;
-        this.rootResource = Resource.builder();
-        this.rootResource.name("Route for [" + root + "]");
-        this.rootResource.path(this.root);
-        this.dataSource = dataSource;
-        this.objectMapper = objectMapper;
-        objectMapper.addMixIn(BasicDynaBean.class, SchemaController.DynaJsonMixin.class);
     }
 
     protected List getList(String sql, List<Object> questions) throws SQLException {
@@ -163,19 +160,23 @@ public abstract class AbstractController {
         PreparedStatement statement = connection.prepareStatement(sql);
         for (int i = 0; i < questions.size(); i++) {
             Object whereValue = questions.get(i);
-            statement.setObject(i+1, whereValue);
+            statement.setObject(i + 1, whereValue);
         }
         ResultSet rs = statement.executeQuery();
-        RowSetDynaClass rsdc = new RowSetDynaClass(rs);
+        debugColumnNames(rs);
+        printResultSet(rs);
+        List<Map<String, Object>> r = getResults(rs);
+//        RowSetDynaClass rsdc = new RowSetDynaClass(rs);
         rs.close();
         statement.close();
         connection.close();
-        return (List) rsdc.getRows().stream().map(new Function() {
-            @Override
-            public Object apply(Object o) {
-                return ((BasicDynaBean) o).getMap();
-            }
-        }).collect(Collectors.toList());
+//        return (List) rsdc.getRows().stream().map(new Function() {
+//            @Override
+//            public Object apply(Object o) {
+//                return ((BasicDynaBean) o).getMap();
+//            }
+//        }).collect(Collectors.toList());
+        return r;
     }
 
     protected abstract void init() throws SQLException, NoSuchMethodException;
@@ -209,10 +210,16 @@ public abstract class AbstractController {
         return result;
     }
 
-    protected List<String> getSingleColumnFromResultSet(ResultSet rs, String colName) throws SQLException {
-        List<String> result = new LinkedList<>();
+    protected List<List<Object>> getSingleColumnFromResultSet(ResultSet rs, String[] colNames) throws SQLException {
+        List<List<Object>> result = new LinkedList<>();
         while (rs.next()) {
-            result.add(rs.getString(colName));
+            List<Object> row = new LinkedList<>();
+            for (int i = 0; i < colNames.length; i++) {
+                String colName = colNames[i];
+                row.add(rs.getString(colName));
+            }
+            result.add(row);
+
         }
         return result;
     }
@@ -226,6 +233,51 @@ public abstract class AbstractController {
             debug("Column %d: %s", i, resultSetMetadata.getColumnName(i));
         }
         return result;
+    }
+
+
+    private List<Map<String, Object>> getResults(ResultSet rs ) throws SQLException {
+
+        List<Map<String, Object>> result = new LinkedList<>();
+        List<String> columnNames = new LinkedList<>();
+
+        ResultSetMetaData resultSetMetadata = rs.getMetaData();
+        int columnCount = resultSetMetadata.getColumnCount();
+
+        for (int i = 1; i <= columnCount; i++) {
+            columnNames.add(resultSetMetadata.getColumnLabel(i));
+        }
+
+        while (rs.next()) {
+            Map<String, Object> row = new HashMap<>();
+            for (int i = 0; i < columnNames.size(); i++) {
+                String columnName = columnNames.get(i);
+                row.put(columnName, rs.getObject(i + 1));
+            }
+            result.add(row);
+        }
+        return result;
+    }
+
+    protected void printResultSet(ResultSet rs) throws SQLException {
+        ResultSetMetaData resultSetMetadata = rs.getMetaData();
+        int columnCount = resultSetMetadata.getColumnCount();
+
+        if (logger.isDebugEnabled()) {
+
+            logger.debug("{} columns in result for fetching columns", columnCount);
+            for (int i = 1; i <= columnCount; i++) {
+                System.out.printf("\t%s", resultSetMetadata.getColumnName(i));
+            }
+            System.out.println("");
+            while (rs.next()) {
+                for (int i = 1; i <= columnCount; i++) {
+                    System.out.printf("\t%s", rs.getObject(i));
+                }
+                System.out.println("");
+            }
+        }
+        rs.beforeFirst();
     }
 
     public abstract class DynaJsonMixin {

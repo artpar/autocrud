@@ -27,11 +27,13 @@ public abstract class AbstractTableController extends AbstractController {
     private static final Random rng = new Random(new Date().getTime());
     protected String tableName;
     protected TableData tableData;
+    protected Map<String, ForeignKey> foreignKeyMap = new HashMap<>();
     private Map<String, List<String>> AutoColumns;
     private int tablePermission;
-    private Long userId;
-    private Long userGroupId;
+    private String userId;
+    private String userGroupId;
     private List<String> ColumnsWeDontUpdate = Arrays.asList("id", "reference_id", "created_at", "updated_at");
+    private String referenceId;
 
     public AbstractTableController(String tableName, String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
         super(context, root, dataSource, objectMapper);
@@ -82,37 +84,29 @@ public abstract class AbstractTableController extends AbstractController {
         String referenceId = null;
         switch (myRequest.getMethod().toLowerCase()) {
             case "get":
-                referenceId = myRequest.getQueryParam("reference_id");
+                referenceId = myRequest.getQueryParam("referenceId");
+                if (referenceId == null || referenceId.length() < 1) {
+                    return null;
+                }
                 break;
-            case "put":
             case "post":
+                return null;
+            case "put":
             case "delete":
-                referenceId = (String) myRequest.getBodyValueMap().get("reference_id");
+                referenceId = (String) myRequest.getBodyValueMap().get("referenceId");
         }
 
 
         final MultivaluedHashMap<String, String> values = new MultivaluedHashMap<>();
-        values.putSingle("reference_id", referenceId);
+        values.putSingle("where", "reference_id:" + referenceId);
         Object res = getResult(values, userInterface);
         if (res instanceof TableResult) {
             for (Object o : ((TableResult) res).getData()) {
                 Map map = (Map) o;
                 int permission = (int) map.get("permission");
 
-                Long ownerUserId = 1L;
-                try {
-
-                    ownerUserId = Long.valueOf(String.valueOf(map.get("user_id")));
-                } catch (Exception e) {
-
-                }
-                Long ownerGroupId = 1L;
-                try {
-
-                    ownerGroupId = Long.valueOf(String.valueOf(map.get("usergroup_id")));
-                } catch (Exception e) {
-
-                }
+                String ownerUserId = "";
+                String ownerGroupId = "";
                 if (isOk(isGet, userInterface, permission, ownerUserId, ownerGroupId)) {
                     return null;
                 }
@@ -124,10 +118,10 @@ public abstract class AbstractTableController extends AbstractController {
         return null;
     }
 
-    private boolean isOk(boolean isGet, UserInterface userInterface, int permission, Long ownerUserId, Long ownerGroupId) {
+    private boolean isOk(boolean isGet, UserInterface userInterface, int permission, Object ownerUserId, Object ownerGroupId) {
         boolean canRead = false, canWrite = false;
         int checkAgainst = getUserCurrentPermissionValue(userInterface, permission, ownerUserId, ownerGroupId);
-        if ((checkAgainst & 1) == 1) {
+        if ((checkAgainst & 4) == 4) {
             canRead = true;
         }
         if ((checkAgainst & 2) == 2) {
@@ -137,7 +131,7 @@ public abstract class AbstractTableController extends AbstractController {
         return ((canWrite && !isGet) || (canRead && isGet));
     }
 
-    private int getUserCurrentPermissionValue(UserInterface userInterface, int permission, Long ownerUserId, Long ownerGroupId) {
+    private int getUserCurrentPermissionValue(UserInterface userInterface, int permission, Object ownerUserId, Object ownerGroupId) {
 //        boolean isUser = false, isGroup = false;
         UserType type = UserType.World;
         int count = 0;
@@ -145,7 +139,7 @@ public abstract class AbstractTableController extends AbstractController {
         if (Objects.equals(ownerUserId, userInterface.getId())) {
             type = UserType.User;
             count = 2;
-        } else if (userInterface.getUserGroupId().contains(ownerGroupId)) {
+        } else if (userInterface.getGroupIdsOfUser().contains(ownerGroupId)) {
             type = UserType.Group;
             count = 1;
         }
@@ -154,20 +148,36 @@ public abstract class AbstractTableController extends AbstractController {
 
     protected Object getResult(MultivaluedMap<String, String> queryParams, UserInterface userInterface) {
         try {
+            String from = " from " + tableName;
+
             List<String> columnNames = tableData.getColumnList();
             List<String> finalList = new LinkedList<>();
             String columnFilterList = queryParams.getFirst("column");
             if (columnFilterList != null && columnFilterList.length() > 0) {
-                String columnInRequest = queryParams.getFirst("column");
-                List<String> names = Arrays.asList(columnInRequest.split(","));
+                List<String> requestedColumnNames = Arrays.asList(columnFilterList.split(","));
                 for (String name : columnNames) {
-                    if (names.contains(name)) {
+                    if (requestedColumnNames.contains(name)) {
                         finalList.add(name);
                     }
                 }
                 columnNames = finalList;
             }
 
+
+            finalList = new LinkedList<>();
+            for (String name : columnNames) {
+                if (foreignKeyMap.containsKey(name)) {
+                    final ForeignKey fk = foreignKeyMap.get(name);
+                    from = from + " join " + fk.getReferenceTableName() + " on " + tableName + "." + name + "=" + fk.getReferenceTableName() + "." + fk.getReferenceColumnName();
+                    finalList.add(fk.getReferenceTableName() + "." + "reference_id" + " as " + name);
+                } else {
+                    finalList.add(tableName + "." + name);
+                }
+            }
+            columnNames = finalList;
+
+
+            // col1:val1,col2:val2
             String where = queryParams.getFirst("where");
             List<String> whereColumns = new LinkedList<>();
             List<Object> whereValues = new LinkedList<>();
@@ -176,7 +186,7 @@ public abstract class AbstractTableController extends AbstractController {
                 for (String s : whereList) {
                     String[] part = s.split(":", 2);
                     if (part.length == 2 && tableData.getColumnList().contains(part[0])) {
-                        whereColumns.add(part[0]);
+                        whereColumns.add(tableName + "." + part[0]);
                         whereValues.add(part[1]);
                     }
                 }
@@ -193,10 +203,9 @@ public abstract class AbstractTableController extends AbstractController {
                     String[] parts = s.split(":");
                     if (tableData.getColumnList().contains(parts[0])) {
                         if (parts.length > 1) {
-
-                            finalOrders.add(new ColumnOrder(parts[0], ColumnDirection.valueOf(parts[1])));
+                            finalOrders.add(new ColumnOrder(tableName + "." + parts[0], ColumnDirection.valueOf(parts[1])));
                         } else {
-                            finalOrders.add(new ColumnOrder(parts[0], ColumnDirection.ASC));
+                            finalOrders.add(new ColumnOrder(tableName + "." + parts[0], ColumnDirection.ASC));
                         }
                     }
                 }
@@ -225,7 +234,7 @@ public abstract class AbstractTableController extends AbstractController {
 
 
             String columns = String.join(",", columnNames);
-            return paginatedResult(columns, " from " + tableName, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, userInterface);
+            return paginatedResult(columns, from, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, userInterface);
         } catch (SQLException e) {
             logger.error("SQL Exception ", e);
             error("Failed to get columns of table[" + tableName + "]", e);
@@ -237,19 +246,8 @@ public abstract class AbstractTableController extends AbstractController {
     public boolean isPermissionOk(boolean isGet, UserInterface userInterface, Map obj) {
         int permission = (int) obj.get("permission");
         Object user_id = obj.get("user_id");
-        if (user_id == null) {
-            user_id = 1L;
-        } else {
-            user_id = Long.valueOf(String.valueOf(user_id));
-        }
         Object usergroup_id = obj.get("usergroup_id");
-        if (usergroup_id == null) {
-            usergroup_id = 1L;
-        } else {
-
-            usergroup_id = Long.valueOf(String.valueOf(usergroup_id));
-        }
-        return isOk(isGet, userInterface, permission, (Long) user_id, (Long) usergroup_id);
+        return isOk(isGet, userInterface, permission, user_id, usergroup_id);
     }
 
     @Override
@@ -313,13 +311,33 @@ public abstract class AbstractTableController extends AbstractController {
         initColumnData();
 
 
-
         Connection connection1 = this.dataSource.getConnection();
         DatabaseMetaData databaseMetaData = connection1.getMetaData();
         ResultSet rs = databaseMetaData.getColumns(null, null, tableName, null);
-//        debugColumnNames(rs);
-        List<String> columnNames = getSingleColumnFromResultSet(rs, "COLUMN_NAME");
+
+        debugColumnNames(rs);
+        printResultSet(rs);
+        rs.beforeFirst();
+        List<List<Object>> columnNamesObject = getSingleColumnFromResultSet(rs, new String[]{"COLUMN_NAME"});
+        List<String> columnNames = new LinkedList<>();
+        for (List<Object> objects : columnNamesObject) {
+            columnNames.add((String) objects.get(0));
+        }
+
         rs.close();
+        ResultSet keys = databaseMetaData.getImportedKeys(null, null, tableName);
+        debugColumnNames(keys);
+        printResultSet(keys);
+        keys.beforeFirst();
+        while (keys.next()) {
+            String thatTableName = keys.getString("PKTABLE_NAME");
+            String thatColumnName = keys.getString("PKCOLUMN_NAME");
+            String thisColumnName = keys.getString("FKCOLUMN_NAME");
+            ForeignKey fk = new ForeignKey(thatColumnName, thatTableName);
+            foreignKeyMap.put(thisColumnName, fk);
+        }
+
+
         connection1.close();
 
         Map<String, Boolean> found = new HashMap<>();
@@ -332,7 +350,7 @@ public abstract class AbstractTableController extends AbstractController {
         });
 
 
-        if (!UserTables.contains(tableName)) {
+        if (!UserTables.contains(tableName) && found.size() > 0) {
 
 
             for (Map.Entry<String, Boolean> stringBooleanEntry : found.entrySet()) {
@@ -357,7 +375,26 @@ public abstract class AbstractTableController extends AbstractController {
             }
         }
 
+//        idColumnCheck();
         tableData.setColumnList(columnNames);
+    }
+
+    private void idColumnCheck() throws SQLException {
+        if (tableName.equalsIgnoreCase("user_usergroup")) {
+            return;
+        }
+        Connection conn = this.dataSource.getConnection();
+        ResultSet idColRes = conn.getMetaData().getColumns(null, "id", tableName, null);
+        idColRes.next();
+        String dataType = idColRes.getString("DATA_TYPE");
+        if (!dataType.equalsIgnoreCase("int(11) unsigned")) {
+            logger.error("[" + tableName + "] Id column is not of type int(11) unsigned. Changing it");
+            PreparedStatement ps = conn.prepareStatement("alter table " + tableName + " modify id int(11) unsigned auto_increment");
+            ps.execute();
+            ps.close();
+        }
+        idColRes.close();
+        conn.close();
     }
 
     private void initWorldTable() throws SQLException {
@@ -365,14 +402,23 @@ public abstract class AbstractTableController extends AbstractController {
 
             Connection conn = dataSource.getConnection();
             ResultSet rs;
-            if (tableName.equalsIgnoreCase("world")) {
-                rs = conn.getMetaData().getTables(null, null, tableName, null);
-            } else {
-                PreparedStatement ps = conn.prepareStatement("SELECT * FROM world WHERE name = ?");
+//            if (tableName.equalsIgnoreCase("world")) {
+//                rs = conn.getMetaData().getTables(null, null, tableName, null);
+//            } else {
+                PreparedStatement ps = conn.prepareStatement("SELECT `w`.`id`,\n" +
+                        "    `w`.`name`,\n" +
+                        "    u.reference_id as user_id,\n" +
+                        "    `w`.`default_permission`,\n" +
+                        "    ug.reference_id as usergroup_id,\n" +
+                        "    `w`.`reference_id`,\n" +
+                        "    `w`.`updated_at`,\n" +
+                        "    `w`.`created_at`,\n" +
+                        "    `w`.`permission`,\n" +
+                        "    `w`.`status`\n" +
+                        "FROM `inf`.`world` w join  user u on w.user_id = u.id join usergroup ug on ug.id = w.usergroup_id where w.name = ?");
                 ps.setString(1, tableName);
                 rs = ps.executeQuery();
-            }
-
+//            }
 
 
             boolean ok = rs.next();
@@ -384,23 +430,21 @@ public abstract class AbstractTableController extends AbstractController {
                 ps1.execute();
                 ps1.close();
                 tablePermission = 755;
-                userId = 1L;
-                userGroupId = 1L;
+                userId = "";
+                userGroupId = "";
             } else {
                 if (!tableName.equalsIgnoreCase("world")) {
                     tablePermission = rs.getInt("permission");
-                    userId = rs.getLong("user_id");
-                    userGroupId = rs.getLong("usergroup_id");
+                    userId = rs.getString("user_id");
+                    userGroupId = rs.getString("usergroup_id");
+                    referenceId = rs.getString("reference_id");
                     logger.info("The world knows about this table");
                 } else {
                     tablePermission = 755;
-                    userId = 1L;
-                    userGroupId = 1L;
+                    userId = "";
+                    userGroupId = "";
                     logger.info("The world is visible now");
                 }
-
-
-
             }
             rs.close();
 //            ps.close();
@@ -410,6 +454,38 @@ public abstract class AbstractTableController extends AbstractController {
             throw new RuntimeException("For table " + tableName, t);
         }
 
+    }
+
+    public static class ForeignKey {
+        String referenceTableName;
+        String referenceColumnName;
+
+        public ForeignKey(String thatColumnName, String thatTableName) {
+
+            this.referenceColumnName = thatColumnName;
+            this.referenceTableName = thatTableName;
+        }
+
+        public String getReferenceTableName() {
+            return referenceTableName;
+        }
+
+        public void setReferenceTableName(String referenceTableName) {
+            this.referenceTableName = referenceTableName;
+        }
+
+        public String getReferenceColumnName() {
+            return referenceColumnName;
+        }
+
+        public void setReferenceColumnName(String referenceColumnName) {
+            this.referenceColumnName = referenceColumnName;
+        }
+
+        @Override
+        public String toString() {
+            return " references " + referenceTableName + "(" + referenceColumnName + ")";
+        }
     }
 
     class MyRequest {
@@ -425,7 +501,7 @@ public abstract class AbstractTableController extends AbstractController {
                 try {
                     try {
                         map = objectMapper.readValue(is, Map.class);
-                    }catch (JsonParseException e) {
+                    } catch (JsonParseException e) {
                         return;
                     }
                     originalValue.putAll(map);
