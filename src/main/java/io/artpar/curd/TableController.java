@@ -77,6 +77,9 @@ public class TableController extends AbstractTableController {
                     result = this.listMyItem(myRequest);
                     break;
             }
+            if (result instanceof Response) {
+                return result;
+            }
             return Response.ok(result, MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             logger.error("Exception: ", e);
@@ -151,7 +154,12 @@ public class TableController extends AbstractTableController {
             String colName = (String) col;
             if (allColumns.contains(colName)) {
                 colsToInsert.add(colName);
-                valueList.add(values.get(colName));
+                Object e = values.get(colName);
+                if (foreignKeyMap.containsKey(colName)) {
+                    ForeignKey fk = foreignKeyMap.get(colName);
+                    e = referenceIdToId(fk.getReferenceTableName(), e);
+                }
+                valueList.add(e);
             }
         }
 
@@ -169,7 +177,7 @@ public class TableController extends AbstractTableController {
         final int secondLast = colsToInsert.size() - 1;
         for (int i = 0; i < colsToInsert.size(); i++) {
             String s = colsToInsert.get(i);
-            sql = sql + s + "=?";
+            sql = sql + "`" +  s + "`" + "=?";
             if (i < secondLast) {
                 sql = sql + ", ";
             }
@@ -235,19 +243,6 @@ public class TableController extends AbstractTableController {
         map.putSingle("where","reference_id:" + referenceId);
         return ((TableResult) getResult(map, user)).getData().get(0);
 //        return values;
-    }
-
-    private Long referenceIdToId(String referenceTable, Object columnValue) throws SQLException {
-        Connection conn = this.dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement("select id from " + referenceTable + " where reference_id = ?");
-        ps.setObject(1, columnValue);
-        ResultSet rs = ps.executeQuery();
-        rs.next();
-        long id = rs.getLong(1);
-        rs.close();
-        ps.close();
-        conn.close();
-        return id;
     }
 
     public Object list(MyRequest containerRequestContext) {

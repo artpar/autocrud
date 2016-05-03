@@ -27,7 +27,6 @@ public abstract class AbstractTableController extends AbstractController {
     private static final Random rng = new Random(new Date().getTime());
     protected String tableName;
     protected TableData tableData;
-    protected Map<String, ForeignKey> foreignKeyMap = new HashMap<>();
     private Map<String, List<String>> AutoColumns;
     private int tablePermission;
     private String userId;
@@ -93,7 +92,10 @@ public abstract class AbstractTableController extends AbstractController {
                 return null;
             case "put":
             case "delete":
-                referenceId = (String) myRequest.getBodyValueMap().get("referenceId");
+                referenceId = (String) myRequest.getOriginalValue("referenceId");
+                if (referenceId == null || referenceId.length() < 1 ) {
+                    referenceId = (String) myRequest.getOriginalValue("reference_id");
+                }
         }
 
 
@@ -105,8 +107,8 @@ public abstract class AbstractTableController extends AbstractController {
                 Map map = (Map) o;
                 int permission = (int) map.get("permission");
 
-                String ownerUserId = "";
-                String ownerGroupId = "";
+                String ownerUserId = (String) map.get("user_id");
+                String ownerGroupId = (String) map.get("usergroup_id");
                 if (isOk(isGet, userInterface, permission, ownerUserId, ownerGroupId)) {
                     return null;
                 }
@@ -187,10 +189,14 @@ public abstract class AbstractTableController extends AbstractController {
                     String[] part = s.split(":", 2);
                     if (part.length == 2 && tableData.getColumnList().contains(part[0])) {
                         whereColumns.add(tableName + "." + part[0]);
-                        whereValues.add(part[1]);
+                        Object e = part[1];
+                        if (foreignKeyMap.containsKey(part[0])) {
+                            ForeignKey fk = foreignKeyMap.get(part[0]);
+                            e = referenceIdToId(fk.getReferenceTableName(), e);
+                        }
+                        whereValues.add(e);
                     }
                 }
-
             }
 
             String limit = queryParams.getFirst("limit");
@@ -232,14 +238,20 @@ public abstract class AbstractTableController extends AbstractController {
                 }
             }
 
+            String[] childrenColumns = new String[]{};
+            if (queryParams.containsKey("children")) {
+                String children = queryParams.getFirst("children");
+                childrenColumns = children.split(",");
+            }
+
 
             String columns = String.join(",", columnNames);
-            return paginatedResult(columns, from, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, userInterface);
+            return paginatedResult(columns, from, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, childrenColumns, userInterface);
         } catch (SQLException e) {
             logger.error("SQL Exception ", e);
             error("Failed to get columns of table[" + tableName + "]", e);
         }
-        return Response.status(Response.Status.INTERNAL_SERVER_ERROR);
+        return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Failed").build();
     }
 
     @Override

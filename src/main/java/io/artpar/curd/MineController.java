@@ -61,6 +61,9 @@ public class MineController extends AbstractTableController {
         MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
         params.putSingle("user_id", String.valueOf(myRequest.getUser().getId()));
         params.putSingle("limit", myRequest.getQueryParam("limit"));
+        if (myRequest.getQueryParam("children") != null) {
+            params.putSingle("children", myRequest.getQueryParam("children"));
+        }
         return getResult(params, myRequest.getUser());
     }
 

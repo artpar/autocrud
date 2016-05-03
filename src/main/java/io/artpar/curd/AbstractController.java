@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.beanutils.BasicDynaBean;
 import org.apache.commons.beanutils.DynaClass;
-import org.apache.commons.beanutils.RowSetDynaClass;
 import org.glassfish.jersey.server.model.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,8 +11,6 @@ import org.slf4j.LoggerFactory;
 import javax.sql.DataSource;
 import java.sql.*;
 import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Created by parth on 30/4/16.
@@ -27,6 +24,7 @@ public abstract class AbstractController {
     protected final Logger logger = LoggerFactory.getLogger(SchemaController.class);
     protected Resource.Builder rootResource;
     protected String context;
+    protected Map<String, AbstractTableController.ForeignKey> foreignKeyMap = new HashMap<>();
 
 
     public AbstractController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
@@ -44,12 +42,12 @@ public abstract class AbstractController {
 
     public TableResult paginatedResult(String columns, String restOfTheClause,
                                        List<String> whereColumns, List<Object> whereValues,
-                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit, UserInterface userInterface)
+                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit, String[] childrenColumns, UserInterface userInterface)
             throws SQLException {
 
         String restOfTheClauseWithWhereClause = restOfTheClause;
         if (whereColumns.size() > 0) {
-            restOfTheClauseWithWhereClause = restOfTheClause + " where " + keyValuePairSeparatedBy(whereColumns, " and ");
+            restOfTheClauseWithWhereClause = restOfTheClause + " where " + root +".status != 'deleted' and " + keyValuePairSeparatedBy(whereColumns, " and ");
         }
         String countQuery = "select count(*) " + restOfTheClauseWithWhereClause;
         int filteredCount = getInt(countQuery, whereValues);
@@ -64,6 +62,18 @@ public abstract class AbstractController {
             Map m = (Map) o;
             if (isPermissionOk(true, userInterface, m)) {
                 allowed.add(o);
+            }
+        }
+
+
+        if (childrenColumns.length > 0) {
+            for (String childrenColumn : childrenColumns) {
+                for (Object row : data) {
+                    Map map = (Map) row;
+                    AbstractTableController.ForeignKey fk = foreignKeyMap.get(childrenColumn);
+                    List<Map<String, Object>> object = referenceIdToObject(fk.getReferenceTableName(), "reference_id", (String) map.get(childrenColumn));
+                    map.put(fk.getReferenceTableName(), object);
+                }
             }
         }
 
@@ -140,7 +150,6 @@ public abstract class AbstractController {
      * sent in hexadecimal notation (like <i>%xx</i>) are
      * converted to ASCII characters.
      *
-     * @param s a string containing the query to be parsed
      * @return a <code>HashTable</code> object built
      * from the parsed key-value pairs
      * @throws IllegalArgumentException if the query string is invalid
@@ -155,7 +164,7 @@ public abstract class AbstractController {
 
     protected List getList(String sql, List<Object> questions) throws SQLException {
         logger.debug("Query for get list " + this.root);
-        logger.debug(sql);
+        logger.debug(sql + "\n" + questions);
         Connection connection = dataSource.getConnection();
         PreparedStatement statement = connection.prepareStatement(sql);
         for (int i = 0; i < questions.size(); i++) {
@@ -236,7 +245,7 @@ public abstract class AbstractController {
     }
 
 
-    private List<Map<String, Object>> getResults(ResultSet rs ) throws SQLException {
+    private List<Map<String, Object>> getResults(ResultSet rs) throws SQLException {
 
         List<Map<String, Object>> result = new LinkedList<>();
         List<String> columnNames = new LinkedList<>();
@@ -278,6 +287,32 @@ public abstract class AbstractController {
             }
         }
         rs.beforeFirst();
+    }
+
+
+    protected List<Map<String, Object>> referenceIdToObject(String tableName, String columnName, String referenceId) throws SQLException {
+        Connection conn = this.dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement("select * from " + tableName + " where " + columnName + " = ?");
+        ps.setObject(1, referenceId);
+        ResultSet rs = ps.executeQuery();
+        List<Map<String, Object>> res = getResults(rs);
+        rs.close();
+        ps.close();
+        conn.close();
+        return res;
+    }
+
+    protected Long referenceIdToId(String referenceTable, Object columnValue) throws SQLException {
+        Connection conn = this.dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement("select id from " + referenceTable + " where reference_id = ?");
+        ps.setObject(1, columnValue);
+        ResultSet rs = ps.executeQuery();
+        rs.next();
+        long id = rs.getLong(1);
+        rs.close();
+        ps.close();
+        conn.close();
+        return id;
     }
 
     public abstract class DynaJsonMixin {
