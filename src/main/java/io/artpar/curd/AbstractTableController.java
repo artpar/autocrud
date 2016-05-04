@@ -102,7 +102,7 @@ public abstract class AbstractTableController extends AbstractController {
         final MultivaluedHashMap<String, String> values = new MultivaluedHashMap<>();
         values.putSingle("where", "reference_id:" + referenceId);
         Object res = getResult(values, userInterface);
-        if (res instanceof TableResult) {
+        if (res instanceof TableResult && ((TableResult) res).getData().size() > 0) {
             for (Object o : ((TableResult) res).getData()) {
                 Map map = (Map) o;
                 int permission = (int) map.get("permission");
@@ -113,11 +113,11 @@ public abstract class AbstractTableController extends AbstractController {
                     return null;
                 }
             }
-            return Response.status(Response.Status.NOT_FOUND);
+            return Response.status(Response.Status.UNAUTHORIZED).build();
         } else {
+            return Response.status(Response.Status.BAD_REQUEST).entity(res).build();
         }
 
-        return null;
     }
 
     private boolean isOk(boolean isGet, UserInterface userInterface, int permission, Object ownerUserId, Object ownerGroupId) {
