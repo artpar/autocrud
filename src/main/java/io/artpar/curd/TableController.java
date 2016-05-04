@@ -97,46 +97,48 @@ public class TableController extends AbstractTableController {
     public Object deleteItem(MyRequest containerRequestContext) throws IOException, SQLException {
         Map values = containerRequestContext.getBodyValueMap();
         debug("Request object: %s", values);
-        List<String> allColumns = tableData.getColumnList();
-        List<String> colsToInsert = new LinkedList<>();
-        List<Object> valueList = new LinkedList<>();
-        for (Object col : values.keySet()) {
-            String colName = (String) col;
-            if (allColumns.contains(colName)) {
-                colsToInsert.add(colName);
-                valueList.add(values.get(colName));
-            }
-        }
+//        List<String> allColumns = tableData.getColumnList();
+//        List<String> colsToInsert = new LinkedList<>();
+//        List<Object> valueList = new LinkedList<>();
+//        for (Object col : values.keySet()) {
+//            String colName = (String) col;
+//            if (allColumns.contains(colName)) {
+//                colsToInsert.add(colName);
+//                valueList.add(values.get(colName));
+//            }
+//        }
 
 
-        final Object referenceId = containerRequestContext.getOriginalValue("referenceId");
+        final Object referenceId = containerRequestContext.getOriginalValue("reference_id");
         if (referenceId == null || referenceId.toString().length() < 1) {
             return Response.status(Response.Status.BAD_REQUEST);
         }
 
 
 //        String referenceId = String.valueOf(referenceId);
-        valueList.add(referenceId);
+//        valueList.add(referenceId);
 
-        String sql = "delete from " + tableName + " ";
-        final int secondLast = colsToInsert.size() - 1;
-        for (int i = 0; i < colsToInsert.size(); i++) {
-            String s = colsToInsert.get(i);
-            sql = sql + s + "=?";
-            if (i < secondLast) {
-                sql = sql + ", ";
-            }
-        }
+//        String sql = "delete from " + tableName + " ";
+        String sql = "update " + tableName + " set status='deleted' ";
+//        final int secondLast = colsToInsert.size() - 1;
+//        for (int i = 0; i < colsToInsert.size(); i++) {
+//            String s = colsToInsert.get(i);
+//            sql = sql + s + "=?";
+//            if (i < secondLast) {
+//                sql = sql + ", ";
+//            }
+//        }
 
         sql = sql + " where reference_id=?";
 
         Connection connection = dataSource.getConnection();
         logger.debug("execute update for " + tableName + "\n" + sql);
         PreparedStatement ps = connection.prepareStatement(sql);
-        for (int i = 1; i <= valueList.size(); i++) {
-            Object s = valueList.get(i - 1);
-            ps.setObject(i, s);
-        }
+        ps.setString(1, (String) referenceId);
+//        for (int i = 1; i <= valueList.size(); i++) {
+//            Object s = valueList.get(i - 1);
+//            ps.setObject(i, s);
+//        }
         ps.execute();
         values.put("reference_id", referenceId);
         ps.close();
@@ -177,7 +179,7 @@ public class TableController extends AbstractTableController {
         final int secondLast = colsToInsert.size() - 1;
         for (int i = 0; i < colsToInsert.size(); i++) {
             String s = colsToInsert.get(i);
-            sql = sql + "`" +  s + "`" + "=?";
+            sql = sql + "`" + s + "`" + "=?";
             if (i < secondLast) {
                 sql = sql + ", ";
             }
@@ -240,7 +242,7 @@ public class TableController extends AbstractTableController {
         ps.close();
         connection.close();
         MultivaluedMap<String, String> map = new MultivaluedHashMap<>();
-        map.putSingle("where","reference_id:" + referenceId);
+        map.putSingle("where", "reference_id:" + referenceId);
         return ((TableResult) getResult(map, user)).getData().get(0);
 //        return values;
     }

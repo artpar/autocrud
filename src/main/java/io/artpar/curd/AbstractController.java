@@ -46,8 +46,11 @@ public abstract class AbstractController {
             throws SQLException {
 
         String restOfTheClauseWithWhereClause = restOfTheClause;
+        String tableName = root.split("/")[0];
         if (whereColumns.size() > 0) {
-            restOfTheClauseWithWhereClause = restOfTheClause + " where " + root +".status != 'deleted' and " + keyValuePairSeparatedBy(whereColumns, " and ");
+            restOfTheClauseWithWhereClause = restOfTheClause + " where " + tableName + ".status != 'deleted' and " + keyValuePairSeparatedBy(whereColumns, " and ");
+        } else {
+            restOfTheClauseWithWhereClause = restOfTheClause + " where " + tableName + ".status != 'deleted' ";
         }
         String countQuery = "select count(*) " + restOfTheClauseWithWhereClause;
         int filteredCount = getInt(countQuery, whereValues);
