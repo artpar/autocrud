@@ -67,10 +67,10 @@ public class SchemaController extends AbstractController {
              finalList.add(tableName);
         }
         if (!worldOk) {
-            getAddMethods("world");
+            addTableResource("world");
         }
         for (String s : finalList) {
-            getAddMethods(s);
+            addTableResource(s);
         }
 
     }
@@ -80,7 +80,7 @@ public class SchemaController extends AbstractController {
         methodBuilder.produces(MediaType.APPLICATION_JSON).handledBy(handler);
     }
 
-    private void getAddMethods(final String tableName) throws SQLException, NoSuchMethodException {
+    private void addTableResource(final String tableName) throws SQLException, NoSuchMethodException {
 //        resourceBuilder.path(tableName);
 
         AbstractTableController abstractTableController = new TableController(tableName, this.context + "/", tableName, dataSource, objectMapper);
@@ -88,21 +88,6 @@ public class SchemaController extends AbstractController {
         MineController tableController1 = new MineController(tableName, this.context + "/", tableName + "/mine", dataSource, objectMapper);
         this.rootResource.addChildResource(tableController1.getRootResource().build());
 
-//        Resource.Builder getIndividual = Resource.builder();
-//        getIndividual.path(tableName + "/{id}");
-
-
-//        addMethod(getIndividual, "GET",new Inflector<ContainerRequestContext, Object>() {
-//            @Override
-//            public Object apply(ContainerRequestContext containerRequestContext) {
-//                return null;
-//            }
-//        } );
-//
-//        resourceBuilder.addChildResource(getIndividual.build());
-
-
-//        return resourceBuilder;
     }
 
 }
