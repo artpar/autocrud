@@ -5,7 +5,7 @@ package io.artpar.curd;
  */
 public class ColumnOrder {
     String name;
-    ColumnDirection dir = ColumnDirection.ASC;
+    ColumnDirection dir = ColumnDirection.asc;
 
     public ColumnOrder(String name, ColumnDirection dir) {
         this.name = name;

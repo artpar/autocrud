@@ -93,7 +93,7 @@ public abstract class AbstractTableController extends AbstractController {
             case "put":
             case "delete":
                 referenceId = (String) myRequest.getOriginalValue("referenceId");
-                if (referenceId == null || referenceId.length() < 1 ) {
+                if (referenceId == null || referenceId.length() < 1) {
                     referenceId = (String) myRequest.getOriginalValue("reference_id");
                 }
         }
@@ -209,9 +209,9 @@ public abstract class AbstractTableController extends AbstractController {
                     String[] parts = s.split(":");
                     if (tableData.getColumnList().contains(parts[0])) {
                         if (parts.length > 1) {
-                            finalOrders.add(new ColumnOrder(tableName + "." + parts[0], ColumnDirection.valueOf(parts[1])));
+                            finalOrders.add(new ColumnOrder(tableName + "." + parts[0], ColumnDirection.valueOf(parts[1].toLowerCase())));
                         } else {
-                            finalOrders.add(new ColumnOrder(tableName + "." + parts[0], ColumnDirection.ASC));
+                            finalOrders.add(new ColumnOrder(tableName + "." + parts[0], ColumnDirection.asc));
                         }
                     }
                 }
@@ -417,19 +417,19 @@ public abstract class AbstractTableController extends AbstractController {
 //            if (tableName.equalsIgnoreCase("world")) {
 //                rs = conn.getMetaData().getTables(null, null, tableName, null);
 //            } else {
-                PreparedStatement ps = conn.prepareStatement("SELECT `w`.`id`,\n" +
-                        "    `w`.`name`,\n" +
-                        "    u.reference_id as user_id,\n" +
-                        "    `w`.`default_permission`,\n" +
-                        "    ug.reference_id as usergroup_id,\n" +
-                        "    `w`.`reference_id`,\n" +
-                        "    `w`.`updated_at`,\n" +
-                        "    `w`.`created_at`,\n" +
-                        "    `w`.`permission`,\n" +
-                        "    `w`.`status`\n" +
-                        "FROM `inf`.`world` w join  user u on w.user_id = u.id join usergroup ug on ug.id = w.usergroup_id where w.name = ?");
-                ps.setString(1, tableName);
-                rs = ps.executeQuery();
+            PreparedStatement ps = conn.prepareStatement("SELECT `w`.`id`,\n" +
+                    "    `w`.`name`,\n" +
+                    "    u.reference_id AS user_id,\n" +
+                    "    `w`.`default_permission`,\n" +
+                    "    ug.reference_id AS usergroup_id,\n" +
+                    "    `w`.`reference_id`,\n" +
+                    "    `w`.`updated_at`,\n" +
+                    "    `w`.`created_at`,\n" +
+                    "    `w`.`permission`,\n" +
+                    "    `w`.`status`\n" +
+                    "FROM `inf`.`world` w JOIN  user u ON w.user_id = u.id JOIN usergroup ug ON ug.id = w.usergroup_id WHERE w.name = ?");
+            ps.setString(1, tableName);
+            rs = ps.executeQuery();
 //            }
 
 
