@@ -45,7 +45,7 @@ public abstract class AbstractController {
                                        List<ColumnOrder> orderColumns, Integer offset, Integer limit, String[] childrenColumns, UserInterface userInterface)
             throws SQLException {
 
-        String restOfTheClauseWithWhereClause = restOfTheClause;
+        String restOfTheClauseWithWhereClause;
         String tableName = root.split("/")[0];
         if (whereColumns.size() > 0) {
             restOfTheClauseWithWhereClause = restOfTheClause + " where " + tableName + ".status != 'deleted' and " + keyValuePairSeparatedBy(whereColumns, " and ");

@@ -17,6 +17,11 @@ import java.util.*;
  */
 public class SchemaController extends AbstractController {
 
+    public SchemaController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+        super(context, root, dataSource, objectMapper);
+        init();
+    }
+
     @Override
     public boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj) {
         return true;
@@ -27,13 +32,8 @@ public class SchemaController extends AbstractController {
         return tableNames.size();
     }
 
-    public SchemaController(  String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
-        super(context, root, dataSource, objectMapper);
-        init();
-    }
-
-
     protected void init() throws SQLException, NoSuchMethodException {
+
         String catalog = null;
         String schemaPattern = null;
         String tableNamePattern = null;
@@ -64,7 +64,7 @@ public class SchemaController extends AbstractController {
             if (tableName.equalsIgnoreCase("world")) {
                 worldOk = true;
             }
-             finalList.add(tableName);
+            finalList.add(tableName);
         }
         if (!worldOk) {
             addTableResource("world");
