@@ -26,45 +26,57 @@ import java.util.UUID;
 public class MineController extends AbstractTableController {
 
 
-    public MineController(String tableName, String context, String relativePath, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
-        super(tableName, context, relativePath, dataSource, objectMapper);
+  public MineController(String tableName, String context, String relativePath, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    super(tableName, context, relativePath, dataSource, objectMapper);
 
-        final Method router = MineController.class.getMethod("router", ContainerRequestContext.class);
+    final Method router = MineController.class.getMethod("router", ContainerRequestContext.class);
 
-        debug("Added GET " + this.context);
-        this.rootResource.addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+    debug("Added GET " + this.context);
+    this.rootResource.addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
-    }
+  }
 
-    @Override
-    @RolesAllowed("ROLE_USER")
-    public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
-        final String path = containerRequestContext.getUriInfo().getPath();
-        final MyRequest myRequest = new MyRequest(containerRequestContext);
-        Object re = permissionCheck(myRequest);
-        if (re != null) {
-            return re;
-        }
-
-
-        String relative = path.substring(path.indexOf(this.root) + this.root.length()) + "/";
-
-        switch (containerRequestContext.getMethod().toLowerCase() + " " + relative) {
-            case "get /":
-                return this.listMyItem(myRequest);
-        }
-        return Response.status(Response.Status.NOT_IMPLEMENTED);
+  @Override
+  @RolesAllowed("ROLE_USER")
+  public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
+    final String path = containerRequestContext.getUriInfo().getPath();
+    final MyRequest myRequest = new MyRequest(containerRequestContext);
+    Object re = permissionCheck(myRequest);
+    if (re != null) {
+      return re;
     }
 
 
-    private Object listMyItem(MyRequest myRequest) {
-        MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
-        params.putSingle("where", "user_id:" + String.valueOf(myRequest.getUser().getId()));
-        params.putSingle("limit", myRequest.getQueryParam("limit"));
-        if (myRequest.getQueryParam("children") != null) {
-            params.putSingle("children", myRequest.getQueryParam("children"));
-        }
-        return getResult(params, myRequest.getUser());
+    String relative = path.substring(path.indexOf(this.root) + this.root.length()) + "/";
+
+    switch (containerRequestContext.getMethod().toLowerCase() + " " + relative) {
+      case "get /":
+        return this.listMyItem(myRequest);
     }
+    return Response.status(Response.Status.NOT_IMPLEMENTED);
+  }
+
+
+  private Object listMyItem(MyRequest myRequest) {
+    MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
+    if ("user".equals(tableName)) {
+      UserInterface user1 = myRequest.getUser();
+      try {
+        List<Map<String, Object>> tableUser = referenceIdToObject("user", "reference_id", user1.getId());
+        params.putSingle("where", "user_id:" + tableUser.get(0).get("id"));
+      } catch (SQLException e) {
+        logger.error("Failed to get user by user reference id ", e);
+      }
+
+    } else {
+      params.putSingle("where", "user_id:" + String.valueOf(myRequest.getUser().getId()));
+    }
+
+    params.putSingle("limit", myRequest.getQueryParam("limit"));
+    if (myRequest.getQueryParam("children") != null) {
+      params.putSingle("children", myRequest.getQueryParam("children"));
+    }
+    return getResult(params, myRequest.getUser());
+  }
 
 }

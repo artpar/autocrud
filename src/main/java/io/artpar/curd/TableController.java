@@ -18,85 +18,85 @@ import java.util.*;
 public class TableController extends AbstractTableController {
 
 
-    public TableController(String tableName, String context, String contextPath, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
-        super(tableName, context, contextPath, dataSource, objectMapper);
+  public TableController(String tableName, String context, String contextPath, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    super(tableName, context, contextPath, dataSource, objectMapper);
 
-        final Method router = TableController.class.getMethod("router", ContainerRequestContext.class);
+    final Method router = TableController.class.getMethod("router", ContainerRequestContext.class);
 
-        debug("Added GET " + this.context);
-        this.rootResource.addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+    debug("Added GET " + this.context);
+    this.rootResource.addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
-        debug("Added POST " + this.context);
-        this.rootResource.addMethod("POST").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
-
-
-        debug("Added PUT " + this.context);
-        this.rootResource.addMethod("PUT").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
-
-        debug("Added DELETE " + this.context);
-        this.rootResource.addMethod("DELETE").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+    debug("Added POST " + this.context);
+    this.rootResource.addMethod("POST").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 
 
-        Resource.Builder re = this.rootResource.addChildResource("mine");
-        re.addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+    debug("Added PUT " + this.context);
+    this.rootResource.addMethod("PUT").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+
+    debug("Added DELETE " + this.context);
+    this.rootResource.addMethod("DELETE").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
+
+
+    Resource.Builder re = this.rootResource.addChildResource("mine");
+    re.addMethod("GET").produces(MediaType.APPLICATION_JSON_TYPE).handledBy(this, router);
 //        this.rootResource.addChildResource(re.build());
-        debug("Added GET " + this.context + "/mine");
+    debug("Added GET " + this.context + "/mine");
+  }
+
+  @Override
+  @RolesAllowed("ROLE_USER")
+  public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
+    final String path = containerRequestContext.getUriInfo().getPath();
+    final int lastSlash = path.lastIndexOf("/");
+    String ourName = path.substring(lastSlash + 1);
+    final MyRequest myRequest = new MyRequest(containerRequestContext);
+    Object re = permissionCheck(myRequest);
+    if (re != null) {
+      return re;
     }
 
-    @Override
-    @RolesAllowed("ROLE_USER")
-    public Object router(ContainerRequestContext containerRequestContext) throws IOException, SQLException {
-        final String path = containerRequestContext.getUriInfo().getPath();
-        final int lastSlash = path.lastIndexOf("/");
-        String ourName = path.substring(lastSlash + 1);
-        final MyRequest myRequest = new MyRequest(containerRequestContext);
-        Object re = permissionCheck(myRequest);
-        if (re != null) {
-            return re;
-        }
 
+    String relative = path.substring(path.indexOf(this.root) + this.root.length()) + "/";
 
-        String relative = path.substring(path.indexOf(this.root) + this.root.length()) + "/";
-
-        try {
-            Object result = null;
-            switch (containerRequestContext.getMethod().toLowerCase() + " " + relative) {
-                case "get /":
-                    result = this.list(myRequest);
-                    break;
-                case "post /":
-                    result = this.newItem(myRequest);
-                    break;
-                case "put /":
-                    result = this.updateItem(myRequest);
-                    break;
-                case "delete /":
-                    result = this.deleteItem(myRequest);
-                    break;
-                case "options /":
-                    result = this.listMyItem(myRequest);
-                    break;
-            }
-            if (result instanceof Response) {
-                return result;
-            }
-            return Response.ok(result, MediaType.APPLICATION_JSON_TYPE).build();
-        } catch (Exception e) {
-            logger.error("Exception: ", e);
-            return Response.status(Response.Status.NOT_ACCEPTABLE).entity(new ApiResponse(e.getMessage())).build();
-        }
+    try {
+      Object result = null;
+      switch (containerRequestContext.getMethod().toLowerCase() + " " + relative) {
+        case "get /":
+          result = this.list(myRequest);
+          break;
+        case "post /":
+          result = this.newItem(myRequest);
+          break;
+        case "put /":
+          result = this.updateItem(myRequest);
+          break;
+        case "delete /":
+          result = this.deleteItem(myRequest);
+          break;
+        case "options /":
+          result = this.listMyItem(myRequest);
+          break;
+      }
+      if (result instanceof Response) {
+        return result;
+      }
+      return Response.ok(result, MediaType.APPLICATION_JSON_TYPE).build();
+    } catch (Exception e) {
+      logger.error("Exception: ", e);
+      return Response.status(Response.Status.NOT_ACCEPTABLE).entity(new ApiResponse(e.getMessage())).build();
+    }
 //        return Response.status(Response.Status.NOT_IMPLEMENTED);
-    }
+  }
 
-    private Object listMyItem(MyRequest myRequest) {
-        MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
-        params.putSingle("user_id", String.valueOf(myRequest.getUser().getId()));
-        return getResult(params, myRequest.getUser());
-    }
+  private Object listMyItem(MyRequest myRequest) {
+    MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
+    params.putSingle("user_id", String.valueOf(myRequest.getUser().getId()));
+    return getResult(params, myRequest.getUser());
+  }
 
-    public Object deleteItem(MyRequest containerRequestContext) throws IOException, SQLException {
-        Map values = containerRequestContext.getBodyValueMap();
-        debug("Request object: %s", values);
+  public Object deleteItem(MyRequest containerRequestContext) throws IOException, SQLException {
+    Map values = containerRequestContext.getBodyValueMap();
+    debug("Request object: %s", values);
 //        List<String> allColumns = tableData.getColumnList();
 //        List<String> colsToInsert = new LinkedList<>();
 //        List<Object> valueList = new LinkedList<>();
@@ -109,17 +109,17 @@ public class TableController extends AbstractTableController {
 //        }
 
 
-        final Object referenceId = containerRequestContext.getOriginalValue("reference_id");
-        if (referenceId == null || referenceId.toString().length() < 1) {
-            return Response.status(Response.Status.BAD_REQUEST);
-        }
+    final Object referenceId = containerRequestContext.getOriginalValue("reference_id");
+    if (referenceId == null || referenceId.toString().length() < 1) {
+      return Response.status(Response.Status.BAD_REQUEST).build();
+    }
 
 
 //        String referenceId = String.valueOf(referenceId);
 //        valueList.add(referenceId);
 
 //        String sql = "delete from " + tableName + " ";
-        String sql = "update " + tableName + " set status='deleted' ";
+    String sql = "update " + tableName + " set status='deleted' ";
 //        final int secondLast = colsToInsert.size() - 1;
 //        for (int i = 0; i < colsToInsert.size(); i++) {
 //            String s = colsToInsert.get(i);
@@ -129,147 +129,187 @@ public class TableController extends AbstractTableController {
 //            }
 //        }
 
-        sql = sql + " where reference_id=?";
+    sql = sql + " where reference_id=?";
 
-        Connection connection = dataSource.getConnection();
-        logger.debug("execute update for " + tableName + "\n" + sql);
-        PreparedStatement ps = connection.prepareStatement(sql);
-        ps.setString(1, (String) referenceId);
+    Connection connection = dataSource.getConnection();
+    logger.debug("execute update for " + tableName + "\n" + sql);
+    PreparedStatement ps = connection.prepareStatement(sql);
+    ps.setString(1, (String) referenceId);
 //        for (int i = 1; i <= valueList.size(); i++) {
 //            Object s = valueList.get(i - 1);
 //            ps.setObject(i, s);
 //        }
-        ps.execute();
-        values.put("reference_id", referenceId);
-        ps.close();
-        connection.close();
-        return values;
+    ps.execute();
+    values.put("reference_id", referenceId);
+    ps.close();
+    connection.close();
+    return values;
+  }
+
+  public Object updateItem(MyRequest containerRequestContext) throws IOException, SQLException {
+    Map values = containerRequestContext.getBodyValueMap();
+    debug("Request object: %s", values);
+    List<String> allColumns = tableData.getColumnList();
+    List<String> colsToInsert = new LinkedList<>();
+    List<Object> valueList = new LinkedList<>();
+    for (Object col : values.keySet()) {
+      String colName = (String) col;
+      if (allColumns.contains(colName)) {
+        colsToInsert.add(colName);
+        Object e = values.get(colName);
+        if (foreignKeyMap.containsKey(colName)) {
+          ForeignKey fk = foreignKeyMap.get(colName);
+          if (e instanceof String) {
+            e = referenceIdToId(fk.getReferenceTableName(), e);
+          }
+
+        }
+        valueList.add(e);
+      }
     }
 
-    public Object updateItem(MyRequest containerRequestContext) throws IOException, SQLException {
-        Map values = containerRequestContext.getBodyValueMap();
-        debug("Request object: %s", values);
-        List<String> allColumns = tableData.getColumnList();
-        List<String> colsToInsert = new LinkedList<>();
-        List<Object> valueList = new LinkedList<>();
-        for (Object col : values.keySet()) {
-            String colName = (String) col;
-            if (allColumns.contains(colName)) {
-                colsToInsert.add(colName);
-                Object e = values.get(colName);
-                if (foreignKeyMap.containsKey(colName)) {
-                    ForeignKey fk = foreignKeyMap.get(colName);
-                    e = referenceIdToId(fk.getReferenceTableName(), e);
-                }
-                valueList.add(e);
+
+    final Object reference_id = containerRequestContext.getOriginalValue("reference_id");
+    if (reference_id == null || reference_id.toString().length() < 1) {
+      return Response.status(Response.Status.BAD_REQUEST).build();
+    }
+
+
+    String referenceId = String.valueOf(reference_id);
+    valueList.add(referenceId);
+
+    String sql = "update " + tableName + " set ";
+    final int secondLast = colsToInsert.size() - 1;
+    for (int i = 0; i < colsToInsert.size(); i++) {
+      String s = colsToInsert.get(i);
+      sql = sql + "`" + s + "`" + "=?";
+      if (i < secondLast) {
+        sql = sql + ", ";
+      }
+    }
+
+    sql = sql + " where reference_id=?";
+
+    Connection connection = dataSource.getConnection();
+    logger.debug("execute update for " + tableName + "\n" + sql);
+    PreparedStatement ps = connection.prepareStatement(sql);
+    for (int i = 1; i <= valueList.size(); i++) {
+      Object s = valueList.get(i - 1);
+      ps.setObject(i, s);
+    }
+    ps.execute();
+    values.put("reference_id", referenceId);
+    ps.close();
+    connection.close();
+    return values;
+  }
+
+  private Object newItem(MyRequest containerRequestContext) throws IOException, SQLException {
+    Map values = containerRequestContext.getBodyValueMap();
+    UserInterface user = containerRequestContext.getUser();
+    debug("Request object: %s", values);
+
+    List<String> allColumns = tableData.getColumnList();
+    List<String> colsToInsert = new LinkedList<>();
+    List<Object> valueList = new LinkedList<>();
+
+    String referenceId = UUID.randomUUID().toString();
+    values.put("user_id", user.getId());
+    values.put("usergroup_id", user.getGroupIdsOfUser().get(0));
+    values.put("reference_id", referenceId);
+
+    for (Object col : values.keySet()) {
+      String colName = (String) col;
+      if (allColumns.contains(colName)) {
+        colsToInsert.add(colName);
+        Object columnValue = values.get(colName);
+        if (foreignKeyMap.containsKey(colName)) {
+          try {
+
+            String stringVal = String.valueOf(columnValue);
+            UUID uuid = UUID.fromString(stringVal);
+            ForeignKey fk = foreignKeyMap.get(colName);
+
+
+            Map<String, Object> relatedObject = referenceIdToObject(fk.getReferenceTableName(), "reference_id", stringVal).get(0);
+
+            if (tableName.startsWith(fk.getReferenceTableName() + "_")) {
+
+              String objectUserId = idToReferenceId("user", (Integer) relatedObject.get("user_id"));
+              String objectUserGroupid = idToReferenceId("usergroup", (Integer) relatedObject.get("usergroup_id"));
+
+              relatedObject.put("user_id", objectUserId);
+              relatedObject.put("usergroup_id", objectUserGroupid);
+
+              boolean canUserAdd = isPermissionOk(false, containerRequestContext.getUser(), relatedObject);
+              if (!canUserAdd) {
+                Response unauthorized = Response.status(Response.Status.UNAUTHORIZED).entity(new ApiResponse("Unauthorized")).build();
+                return unauthorized;
+              }
+            } else {
+              boolean canUserAdd = isPermissionOk(true, containerRequestContext.getUser(), relatedObject);
+              if (!canUserAdd) {
+                Response unauthorized = Response.status(Response.Status.UNAUTHORIZED).entity(new ApiResponse("Unauthorized")).build();
+                return unauthorized;
+              }
             }
+
+            columnValue = referenceIdToId(fk.getReferenceTableName(), columnValue);
+
+          } catch (IllegalArgumentException e) {
+
+          }
         }
-
-
-        final Object reference_id = containerRequestContext.getOriginalValue("reference_id");
-        if (reference_id == null || reference_id.toString().length() < 1) {
-            return Response.status(Response.Status.BAD_REQUEST);
-        }
-
-
-        String referenceId = String.valueOf(reference_id);
-        valueList.add(referenceId);
-
-        String sql = "update " + tableName + " set ";
-        final int secondLast = colsToInsert.size() - 1;
-        for (int i = 0; i < colsToInsert.size(); i++) {
-            String s = colsToInsert.get(i);
-            sql = sql + "`" + s + "`" + "=?";
-            if (i < secondLast) {
-                sql = sql + ", ";
-            }
-        }
-
-        sql = sql + " where reference_id=?";
-
-        Connection connection = dataSource.getConnection();
-        logger.debug("execute update for " + tableName + "\n" + sql);
-        PreparedStatement ps = connection.prepareStatement(sql);
-        for (int i = 1; i <= valueList.size(); i++) {
-            Object s = valueList.get(i - 1);
-            ps.setObject(i, s);
-        }
-        ps.execute();
-        values.put("reference_id", referenceId);
-        ps.close();
-        connection.close();
-        return values;
+        valueList.add(columnValue);
+      }
     }
 
-    public Object newItem(MyRequest containerRequestContext) throws IOException, SQLException {
-        Map values = containerRequestContext.getBodyValueMap();
-        UserInterface user = containerRequestContext.getUser();
-        debug("Request object: %s", values);
-        List<String> allColumns = tableData.getColumnList();
-        List<String> colsToInsert = new LinkedList<>();
-        List<Object> valueList = new LinkedList<>();
-        String referenceId = UUID.randomUUID().toString();
-        values.put("user_id", user.getId());
-        values.put("usergroup_id", user.getGroupIdsOfUser().get(0));
-        values.put("reference_id", referenceId);
-        for (Object col : values.keySet()) {
-            String colName = (String) col;
-            if (allColumns.contains(colName)) {
-                colsToInsert.add(colName);
-                Object columnValue = values.get(colName);
-                if (foreignKeyMap.containsKey(colName)) {
-                    try {
-                        UUID uuid = UUID.fromString(String.valueOf(columnValue));
-                        ForeignKey fk = foreignKeyMap.get(colName);
-                        columnValue = referenceIdToId(fk.getReferenceTableName(), columnValue);
-                    } catch (IllegalArgumentException e) {
+    String sql =
+        "insert into " +
+            tableName +
+            "(" +
+            String.join(",", colsToInsert) +
+            ") values (" +
+            String.join(",", new String(new char[colsToInsert.size()]).replace("\0", "?").split("")) +
+            ")";
 
-                    }
-                }
-                valueList.add(columnValue);
-            }
-        }
+    Connection connection = dataSource.getConnection();
+    PreparedStatement ps = connection.prepareStatement(sql);
+    for (int i = 1; i <= valueList.size(); i++) {
+      Object s = valueList.get(i - 1);
+      ps.setObject(i, s);
+    }
+    ps.execute();
+    ps.close();
+    connection.close();
+    MultivaluedMap<String, String> map = new MultivaluedHashMap<>();
+    map.putSingle("where", "reference_id:" + referenceId);
+    return ((TableResult) getResult(map, user)).getData().get(0);
+  }
 
-        String sql = "insert into " + tableName + "(" + String.join(",", colsToInsert) + ") values (" + String.join(",", new String(new char[colsToInsert.size()]).replace("\0", "?").split("")) + ")";
+  private Object list(MyRequest containerRequestContext) {
+    MultivaluedMap<String, String> queryParams = containerRequestContext.getQueryParameters();
+    return getResult(queryParams, containerRequestContext.getUser());
+  }
 
-        Connection connection = dataSource.getConnection();
-        PreparedStatement ps = connection.prepareStatement(sql);
-        for (int i = 1; i <= valueList.size(); i++) {
-            Object s = valueList.get(i - 1);
-            ps.setObject(i, s);
-        }
-        ps.execute();
-        ps.close();
-        connection.close();
-        MultivaluedMap<String, String> map = new MultivaluedHashMap<>();
-        map.putSingle("where", "reference_id:" + referenceId);
-        return ((TableResult) getResult(map, user)).getData().get(0);
-//        return values;
+  private static class ApiResponse {
+    String message;
+
+    public ApiResponse(String message) {
+      this.message = message;
     }
 
-    public Object list(MyRequest containerRequestContext) {
-        MultivaluedMap<String, String> queryParams = containerRequestContext.getQueryParameters();
-        return getResult(queryParams, containerRequestContext.getUser());
+    public ApiResponse() {
     }
 
-    public static class ApiResponse {
-        String message;
-
-        public ApiResponse(String message) {
-            this.message = message;
-        }
-
-        public ApiResponse() {
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
-        }
+    public String getMessage() {
+      return message;
     }
+
+    public void setMessage(String message) {
+      this.message = message;
+    }
+  }
 
 
 }
