@@ -96,6 +96,10 @@ public abstract class AbstractTableController extends AbstractController {
         if (referenceId == null || referenceId.length() < 1) {
           referenceId = (String) myRequest.getOriginalValue("reference_id");
         }
+
+        if (referenceId == null || referenceId.length() < 10) {
+          return Response.status(405);
+        }
     }
 
 
@@ -273,54 +277,62 @@ public abstract class AbstractTableController extends AbstractController {
 
   @Override
   protected Integer getTotalCount() throws SQLException {
-    Connection connection = dataSource.getConnection();
-    PreparedStatement preparedStatement = connection.prepareStatement("select count(*) from " + tableName);
-    ResultSet rs = preparedStatement.executeQuery();
-    rs.next();
 
-    int anInt = rs.getInt(1);
-    rs.close();
-    preparedStatement.close();
-    connection.close();
+
+    int anInt;
+    try (Connection connection = dataSource.getConnection(); PreparedStatement preparedStatement = connection.prepareStatement("select count(*) from " + tableName);) {
+      try (ResultSet rs = preparedStatement.executeQuery()) {
+        rs.next();
+        anInt = rs.getInt(1);
+        rs.close();
+      }
+      preparedStatement.close();
+      connection.close();
+    }
     return anInt;
   }
 
   public void checkTableExist() throws SQLException {
-    Connection conn = dataSource.getConnection();
-    ResultSet table = conn.getMetaData().getTables(null, null, tableName, null);
-    boolean ok = table.next();
-    table.close();
-    conn.close();
-    if (!ok) {
-      logger.error("Table [" + tableName + "] does not exist. Creating it.");
-      conn = dataSource.getConnection();
-      PreparedStatement ps;
-      if (tableName.equalsIgnoreCase("world")) {
+    try (Connection conn = dataSource.getConnection();) {
 
-        ps = conn.prepareStatement("create table " + tableName + " ( " +
-            "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
-            "name VARCHAR(50) not NULL , " +
-            "user_id int(11) default 1 REFERENCES user(id), " +
-            "default_permission int(4) default 755, " +
-            "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
-            "reference_id varchar(50) not null UNIQUE)"
-        );
+
+      ResultSet table = conn.getMetaData().getTables(null, null, tableName, null);
+      boolean ok = table.next();
+      table.close();
+      if (!ok) {
+        logger.error("Table [" + tableName + "] does not exist. Creating it.");
+        PreparedStatement ps;
+        if (tableName.equalsIgnoreCase("world")) {
+
+          ps = conn.prepareStatement("create table " + tableName + " ( " +
+              "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
+              "name VARCHAR(50) not NULL , " +
+              "user_id int(11) default 1 REFERENCES user(id), " +
+              "default_permission int(4) default 755, " +
+              "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
+              "reference_id varchar(50) not null UNIQUE)"
+          );
+        } else {
+          ps = conn.prepareStatement("create table " + tableName + " ( " +
+              "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
+              "name VARCHAR(50) not NULL , " +
+              "user_id int(11) default 1 REFERENCES user(id), " +
+              "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
+              "reference_id varchar(50) not null UNIQUE)"
+          );
+
+        }
+        try {
+
+          ps.execute();
+        } catch (Exception e) {
+          ps.close();
+          throw e;
+        }
+
       } else {
-        ps = conn.prepareStatement("create table " + tableName + " ( " +
-            "id int(11) AUTO_INCREMENT PRIMARY KEY, " +
-            "name VARCHAR(50) not NULL , " +
-            "user_id int(11) default 1 REFERENCES user(id), " +
-            "usergroup_id int(11) DEFAULT 1 REFERENCES usergroup (id), " +
-            "reference_id varchar(50) not null UNIQUE)"
-        );
-
+        logger.info("Table [" + tableName + "] is ok.");
       }
-      ps.execute();
-      ps.close();
-      conn.close();
-
-    } else {
-      logger.info("Table [" + tableName + "] is ok.");
     }
   }
 
@@ -332,34 +344,40 @@ public abstract class AbstractTableController extends AbstractController {
     initColumnData();
 
 
-    Connection connection1 = this.dataSource.getConnection();
-    DatabaseMetaData databaseMetaData = connection1.getMetaData();
-    ResultSet rs = databaseMetaData.getColumns(null, null, tableName, null);
+    List<String> columnNames;
+    try (
+        Connection connection1 = this.dataSource.getConnection();
+    ) {
 
-    debugColumnNames(rs);
-    printResultSet(rs);
-    rs.beforeFirst();
-    List<List<Object>> columnNamesObject = getSingleColumnFromResultSet(rs, new String[]{"COLUMN_NAME"});
-    List<String> columnNames = new LinkedList<>();
-    for (List<Object> objects : columnNamesObject) {
-      columnNames.add((String) objects.get(0));
+
+      DatabaseMetaData databaseMetaData = connection1.getMetaData();
+      ResultSet rs = databaseMetaData.getColumns(null, null, tableName, null);
+
+      debugColumnNames(rs);
+      printResultSet(rs);
+      rs.beforeFirst();
+      List<List<Object>> columnNamesObject = getSingleColumnFromResultSet(rs, new String[]{"COLUMN_NAME"});
+      columnNames = new LinkedList<>();
+      for (List<Object> objects : columnNamesObject) {
+        columnNames.add((String) objects.get(0));
+      }
+
+      rs.close();
+      ResultSet keys = databaseMetaData.getImportedKeys(null, null, tableName);
+      debugColumnNames(keys);
+      printResultSet(keys);
+      keys.beforeFirst();
+      while (keys.next()) {
+        String thatTableName = keys.getString("PKTABLE_NAME");
+        String thatColumnName = keys.getString("PKCOLUMN_NAME");
+        String thisColumnName = keys.getString("FKCOLUMN_NAME");
+        ForeignKey fk = new ForeignKey(thatColumnName, thatTableName);
+        foreignKeyMap.put(thisColumnName, fk);
+      }
+
+
+      connection1.close();
     }
-
-    rs.close();
-    ResultSet keys = databaseMetaData.getImportedKeys(null, null, tableName);
-    debugColumnNames(keys);
-    printResultSet(keys);
-    keys.beforeFirst();
-    while (keys.next()) {
-      String thatTableName = keys.getString("PKTABLE_NAME");
-      String thatColumnName = keys.getString("PKCOLUMN_NAME");
-      String thisColumnName = keys.getString("FKCOLUMN_NAME");
-      ForeignKey fk = new ForeignKey(thatColumnName, thatTableName);
-      foreignKeyMap.put(thisColumnName, fk);
-    }
-
-
-    connection1.close();
 
     Map<String, Boolean> found = new HashMap<>();
     for (String col : AutoColumns.keySet()) {
@@ -381,17 +399,20 @@ public abstract class AbstractTableController extends AbstractController {
         error("Column %s not found in table %s", stringBooleanEntry.getKey(), tableName);
         final List<String> sqlList = AutoColumns.get(stringBooleanEntry.getKey());
 
-        Connection connection = dataSource.getConnection();
-        connection.setAutoCommit(false);
-        for (String sql : sqlList) {
-          PreparedStatement ps = connection.prepareStatement(sql);
-          debug("Executing: " + sql);
-          ps.execute();
-          ps.close();
+        try (
+            Connection connection = dataSource.getConnection();
+        ) {
+          connection.setAutoCommit(false);
+          for (String sql : sqlList) {
+            PreparedStatement ps = connection.prepareStatement(sql);
+            debug("Executing: " + sql);
+            ps.execute();
+            ps.close();
+          }
+          connection.commit();
+          connection.setAutoCommit(true);
+          connection.close();
         }
-        connection.commit();
-        connection.setAutoCommit(true);
-        connection.close();
 
       }
     }
@@ -404,29 +425,29 @@ public abstract class AbstractTableController extends AbstractController {
     if (tableName.equalsIgnoreCase("user_usergroup")) {
       return;
     }
-    Connection conn = this.dataSource.getConnection();
-    ResultSet idColRes = conn.getMetaData().getColumns(null, "id", tableName, null);
-    idColRes.next();
-    String dataType = idColRes.getString("DATA_TYPE");
-    if (!dataType.equalsIgnoreCase("int(11) unsigned")) {
-      logger.error("[" + tableName + "] Id column is not of type int(11) unsigned. Changing it");
-      PreparedStatement ps = conn.prepareStatement("alter table " + tableName + " modify id int(11) unsigned auto_increment");
-      ps.execute();
-      ps.close();
+    try (
+        Connection conn = this.dataSource.getConnection();
+    ) {
+
+
+      ResultSet idColRes = conn.getMetaData().getColumns(null, "id", tableName, null);
+      idColRes.next();
+      String dataType = idColRes.getString("DATA_TYPE");
+      if (!dataType.equalsIgnoreCase("int(11) unsigned")) {
+        logger.error("[" + tableName + "] Id column is not of type int(11) unsigned. Changing it");
+        try (PreparedStatement ps = conn.prepareStatement("alter table " + tableName + " modify id int(11) unsigned auto_increment");) {
+          ps.execute();
+        }
+      }
+      idColRes.close();
+      conn.close();
     }
-    idColRes.close();
-    conn.close();
   }
 
   private void initWorldTable() throws SQLException {
     ResultSet rs = null;
-    Connection conn = null;
-    try {
+    try (Connection conn = dataSource.getConnection();) {
 
-      conn = dataSource.getConnection();
-//            if (tableName.equalsIgnoreCase("world")) {
-//                rs = conn.getMetaData().getTables(null, null, tableName, null);
-//            } else {
       PreparedStatement ps = conn.prepareStatement("SELECT `w`.`id`,\n" +
           "    `w`.`name`,\n" +
           "    u.reference_id AS user_id,\n" +
@@ -440,7 +461,6 @@ public abstract class AbstractTableController extends AbstractController {
           "FROM `inf`.`world` w JOIN  user u ON w.user_id = u.id JOIN usergroup ug ON ug.id = w.usergroup_id WHERE w.name = ?");
       ps.setString(1, tableName);
       rs = ps.executeQuery();
-//            }
 
 
       boolean ok = rs.next();
@@ -469,15 +489,11 @@ public abstract class AbstractTableController extends AbstractController {
         }
       }
       rs.close();
-//            ps.close();
       conn.close();
 
     } catch (Exception t) {
       if (rs != null && !rs.isClosed()) {
         rs.close();
-      }
-      if (conn   != null && !conn.isClosed()) {
-        conn.close();
       }
       throw new RuntimeException("For table " + tableName, t);
     }

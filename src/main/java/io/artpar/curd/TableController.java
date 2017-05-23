@@ -131,18 +131,19 @@ public class TableController extends AbstractTableController {
 
     sql = sql + " where reference_id=?";
 
-    Connection connection = dataSource.getConnection();
-    logger.debug("execute update for " + tableName + "\n" + sql);
-    PreparedStatement ps = connection.prepareStatement(sql);
-    ps.setString(1, (String) referenceId);
-//        for (int i = 1; i <= valueList.size(); i++) {
-//            Object s = valueList.get(i - 1);
-//            ps.setObject(i, s);
-//        }
-    ps.execute();
-    values.put("reference_id", referenceId);
-    ps.close();
-    connection.close();
+    try (
+        Connection connection = dataSource.getConnection();
+        PreparedStatement ps = connection.prepareStatement(sql);
+    ) {
+
+
+      logger.debug("execute update for " + tableName + "\n" + sql);
+      ps.setString(1, (String) referenceId);
+      ps.execute();
+      values.put("reference_id", referenceId);
+      ps.close();
+      connection.close();
+    }
     return values;
   }
 
@@ -190,17 +191,23 @@ public class TableController extends AbstractTableController {
 
     sql = sql + " where reference_id=?";
 
-    Connection connection = dataSource.getConnection();
-    logger.debug("execute update for " + tableName + "\n" + sql);
-    PreparedStatement ps = connection.prepareStatement(sql);
-    for (int i = 1; i <= valueList.size(); i++) {
-      Object s = valueList.get(i - 1);
-      ps.setObject(i, s);
+    try (
+        Connection connection = dataSource.getConnection();
+        PreparedStatement ps = connection.prepareStatement(sql);
+    ) {
+
+
+      logger.debug("execute update for " + tableName + "\n" + sql);
+
+      for (int i = 1; i <= valueList.size(); i++) {
+        Object s = valueList.get(i - 1);
+        ps.setObject(i, s);
+      }
+      ps.execute();
+      values.put("reference_id", referenceId);
+      ps.close();
+      connection.close();
     }
-    ps.execute();
-    values.put("reference_id", referenceId);
-    ps.close();
-    connection.close();
     return values;
   }
 
@@ -273,15 +280,19 @@ public class TableController extends AbstractTableController {
             String.join(",", new String(new char[colsToInsert.size()]).replace("\0", "?").split("")) +
             ")";
 
-    Connection connection = dataSource.getConnection();
-    PreparedStatement ps = connection.prepareStatement(sql);
-    for (int i = 1; i <= valueList.size(); i++) {
-      Object s = valueList.get(i - 1);
-      ps.setObject(i, s);
+    try (
+        Connection connection = dataSource.getConnection();
+        PreparedStatement ps = connection.prepareStatement(sql);
+    ) {
+
+      for (int i = 1; i <= valueList.size(); i++) {
+        Object s = valueList.get(i - 1);
+        ps.setObject(i, s);
+      }
+      ps.execute();
+      ps.close();
+      connection.close();
     }
-    ps.execute();
-    ps.close();
-    connection.close();
     MultivaluedMap<String, String> map = new MultivaluedHashMap<>();
     map.putSingle("where", "reference_id:" + referenceId);
     return ((TableResult) getResult(map, user)).getData().get(0);

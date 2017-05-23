@@ -17,78 +17,78 @@ import java.util.*;
  */
 public class SchemaController extends AbstractController {
 
-    public SchemaController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
-        super(context, root, dataSource, objectMapper);
-        init();
-    }
+  public SchemaController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    super(context, root, dataSource, objectMapper);
+    init();
+  }
 
-    @Override
-    public boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj) {
-        return true;
-    }
+  @Override
+  public boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj) {
+    return true;
+  }
 
-    @Override
-    protected Integer getTotalCount() throws SQLException {
-        return tableNames.size();
-    }
+  @Override
+  protected Integer getTotalCount() throws SQLException {
+    return tableNames.size();
+  }
 
-    protected void init() throws SQLException, NoSuchMethodException {
+  protected void init() throws SQLException, NoSuchMethodException {
 
-        String catalog = null;
-        String schemaPattern = null;
-        String tableNamePattern = null;
-        String[] types = null;
+    String catalog = null;
+    String schemaPattern = null;
+    String tableNamePattern = null;
+    String[] types = null;
 
+    try (
         Connection connection = this.dataSource.getConnection();
-        DatabaseMetaData databaseMetaData = connection.getMetaData();
-        ResultSet result = databaseMetaData.getTables(catalog, schemaPattern, tableNamePattern, types);
-        List<String> tableNameList = getSingleColumnFromResultSet(result, 3);
-        for (String s : tableNameList) {
-            tableNames.put(s, new TableData());
-        }
-        connection.close();
+        ResultSet result = connection.getMetaData().getTables(catalog, schemaPattern, tableNamePattern, types);
+    ) {
 
-        result.close();
-
-        addMethod(rootResource, "GET", new Inflector<ContainerRequestContext, Object>() {
-            @Override
-            @RolesAllowed("ROLE_USER")
-            public Set<String> apply(ContainerRequestContext containerRequestContext) {
-                return tableNames.keySet();
-            }
-        });
-
-        boolean worldOk = false;
-        List<String> finalList = new LinkedList<>();
-        for (final String tableName : tableNames.keySet()) {
-            if (tableName.equalsIgnoreCase("world")) {
-                worldOk = true;
-            }
-            finalList.add(tableName);
-        }
-        if (!worldOk) {
-            addTableResource("world");
-        }
-        for (String s : finalList) {
-            addTableResource(s);
-        }
+      List<String> tableNameList = getSingleColumnFromResultSet(result, 3);
+      for (String s : tableNameList) {
+        tableNames.put(s, new TableData());
+      }
 
     }
+    addMethod(rootResource, "GET", new Inflector<ContainerRequestContext, Object>() {
+      @Override
+      @RolesAllowed("ROLE_USER")
+      public Set<String> apply(ContainerRequestContext containerRequestContext) {
+        return tableNames.keySet();
+      }
+    });
 
-    private void addMethod(Resource.Builder resourceBuilder, String method, Inflector<ContainerRequestContext, Object> handler) {
-        ResourceMethod.Builder methodBuilder = resourceBuilder.addMethod(method);
-        methodBuilder.produces(MediaType.APPLICATION_JSON).handledBy(handler);
+    boolean worldOk = false;
+    List<String> finalList = new LinkedList<>();
+    for (final String tableName : tableNames.keySet()) {
+      if (tableName.equalsIgnoreCase("world")) {
+        worldOk = true;
+      }
+      finalList.add(tableName);
+    }
+    if (!worldOk) {
+      addTableResource("world");
+    }
+    for (String s : finalList) {
+      addTableResource(s);
     }
 
-    private void addTableResource(final String tableName) throws SQLException, NoSuchMethodException {
+  }
+
+  private void addMethod(Resource.Builder resourceBuilder, String method, Inflector<ContainerRequestContext, Object> handler) {
+    ResourceMethod.Builder methodBuilder = resourceBuilder.addMethod(method);
+    methodBuilder.produces(MediaType.APPLICATION_JSON).handledBy(handler);
+  }
+
+  private void addTableResource(final String tableName) throws SQLException, NoSuchMethodException {
 //        resourceBuilder.path(tableName);
 
-        AbstractTableController abstractTableController = new TableController(tableName, this.context + "/", tableName, dataSource, objectMapper);
-        this.rootResource.addChildResource(abstractTableController.getRootResource().build());
-        MineController tableController1 = new MineController(tableName, this.context + "/", tableName + "/mine", dataSource, objectMapper);
-        this.rootResource.addChildResource(tableController1.getRootResource().build());
+    AbstractTableController abstractTableController = new TableController(tableName, this.context + "/", tableName, dataSource, objectMapper);
+    this.rootResource.addChildResource(abstractTableController.getRootResource().build());
+    MineController tableController1 = new MineController(tableName, this.context + "/", tableName + "/mine", dataSource, objectMapper);
+    this.rootResource.addChildResource(tableController1.getRootResource().build());
 
-    }
+  }
 
 }
 

@@ -92,19 +92,27 @@ public abstract class AbstractController {
 
   private int getInt(String countQuery, List<Object> whereValues) throws SQLException {
     logger.debug("Execute count query: " + countQuery);
-    Connection connection = dataSource.getConnection();
-    PreparedStatement preparedStatement = connection.prepareStatement(countQuery);
-    for (int i = 0; i < whereValues.size(); i++) {
-      Object whereValue = whereValues.get(i);
-      preparedStatement.setObject(i + 1, whereValue);
-    }
 
-    ResultSet rs = preparedStatement.executeQuery();
-    rs.next();
-    int filteredCount = rs.getInt(1);
-    rs.close();
-    preparedStatement.close();
-    connection.close();
+    int filteredCount;
+    try (
+        Connection connection = dataSource.getConnection();
+        PreparedStatement preparedStatement = connection.prepareStatement(countQuery);
+    ) {
+
+      for (int i = 0; i < whereValues.size(); i++) {
+        Object whereValue = whereValues.get(i);
+        preparedStatement.setObject(i + 1, whereValue);
+      }
+
+      try (ResultSet rs = preparedStatement.executeQuery()) {
+        rs.next();
+        filteredCount = rs.getInt(1);
+        rs.close();
+      }
+      preparedStatement.close();
+      connection.close();
+
+    }
     return filteredCount;
   }
 
@@ -144,26 +152,25 @@ public abstract class AbstractController {
   protected List getList(String sql, List<Object> questions) throws SQLException {
     logger.debug("Query for get list " + this.root);
     logger.debug(sql + "\n" + questions);
-    Connection connection = dataSource.getConnection();
-    PreparedStatement statement = connection.prepareStatement(sql);
-    for (int i = 0; i < questions.size(); i++) {
-      Object whereValue = questions.get(i);
-      statement.setObject(i + 1, whereValue);
+
+    List<Map<String, Object>> r;
+    try (
+        Connection connection = dataSource.getConnection();
+        PreparedStatement statement = connection.prepareStatement(sql);
+    ) {
+
+      for (int i = 0; i < questions.size(); i++) {
+        Object whereValue = questions.get(i);
+        statement.setObject(i + 1, whereValue);
+      }
+      ResultSet rs = statement.executeQuery();
+      debugColumnNames(rs);
+      printResultSet(rs);
+      r = getResults(rs);
+      rs.close();
+      statement.close();
     }
-    ResultSet rs = statement.executeQuery();
-    debugColumnNames(rs);
-    printResultSet(rs);
-    List<Map<String, Object>> r = getResults(rs);
-//        RowSetDynaClass rsdc = new RowSetDynaClass(rs);
-    rs.close();
-    statement.close();
-    connection.close();
-//        return (List) rsdc.getRows().stream().map(new Function() {
-//            @Override
-//            public Object apply(Object o) {
-//                return ((BasicDynaBean) o).getMap();
-//            }
-//        }).collect(Collectors.toList());
+
     return r;
   }
 
@@ -213,6 +220,9 @@ public abstract class AbstractController {
   }
 
   protected String[] debugColumnNames(ResultSet rs) throws SQLException {
+    if (true) {
+      return new String[0];
+    }
     String[] result = new String[rs.getFetchSize()];
     ResultSetMetaData resultSetMetadata = rs.getMetaData();
     int columnCount = resultSetMetadata.getColumnCount();
@@ -270,40 +280,57 @@ public abstract class AbstractController {
 
 
   protected List<Map<String, Object>> referenceIdToObject(String tableName, String columnName, String columnValue) throws SQLException {
-    Connection conn = this.dataSource.getConnection();
-    PreparedStatement ps = conn.prepareStatement("select * from " + tableName + " where " + columnName + " = ?");
-    ps.setObject(1, columnValue);
-    ResultSet rs = ps.executeQuery();
-    List<Map<String, Object>> res = getResults(rs);
-    rs.close();
-    ps.close();
-    conn.close();
+    List<Map<String, Object>> res;
+    try (
+        Connection conn = this.dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement("select * from " + tableName + " where " + columnName + " = ?");
+    ) {
+
+      ps.setObject(1, columnValue);
+      try (ResultSet rs = ps.executeQuery();) {
+        res = getResults(rs);
+        rs.close();
+      }
+      ps.close();
+      conn.close();
+    }
     return res;
   }
 
   Long referenceIdToId(String tableName, Object columnValue) throws SQLException {
-    Connection conn = this.dataSource.getConnection();
-    PreparedStatement ps = conn.prepareStatement("select id from " + tableName + " where reference_id = ?");
-    ps.setObject(1, columnValue);
-    ResultSet rs = ps.executeQuery();
-    rs.next();
-    long id = rs.getLong(1);
-    rs.close();
-    ps.close();
-    conn.close();
+    long id;
+    try (
+        Connection conn = this.dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement("select id from " + tableName + " where reference_id = ?");
+    ) {
+      ps.setObject(1, columnValue);
+      try (ResultSet rs = ps.executeQuery()) {
+        rs.next();
+        id = rs.getLong(1);
+        rs.close();
+      }
+      ps.close();
+      conn.close();
+    }
     return id;
   }
 
   String idToReferenceId(String tableName, Integer id) throws SQLException {
-    Connection conn = this.dataSource.getConnection();
-    PreparedStatement ps = conn.prepareStatement("select reference_id from " + tableName + " where id = ?");
-    ps.setObject(1, id);
-    ResultSet rs = ps.executeQuery();
-    rs.next();
-    String ids = rs.getString(1);
-    rs.close();
-    ps.close();
-    conn.close();
+    String ids;
+    try (
+        Connection conn = this.dataSource.getConnection();
+        PreparedStatement ps = conn.prepareStatement("select reference_id from " + tableName + " where id = ?");
+    ) {
+
+      ps.setObject(1, id);
+      try (ResultSet rs = ps.executeQuery();) {
+        rs.next();
+        ids = rs.getString(1);
+        rs.close();
+      }
+      ps.close();
+      conn.close();
+    }
     return ids;
   }
 
