@@ -3,6 +3,7 @@ package io.artpar.curd;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.lang3.StringUtils;
 import org.glassfish.jersey.server.ContainerRequest;
 
 import javax.annotation.security.RolesAllowed;
@@ -150,9 +151,15 @@ public abstract class AbstractTableController extends AbstractController {
 
     protected Object getResult(MultivaluedMap<String, String> queryParams, UserInterface userInterface) {
         try {
-            String from = " from " + tableName;
+            StringBuilder from = new StringBuilder(" from " + tableName);
 
             List<String> columnNames = tableData.getColumnList();
+
+            logger.info("Columns to select: [{}]", StringUtils.join(columnNames, ", "));
+            if (!columnNames.contains("permission")) {
+                columnNames.add("user.permission");
+            }
+
             List<String> finalList = new LinkedList<>();
             String columnFilterList = queryParams.getFirst("column");
             if (columnFilterList != null && columnFilterList.length() > 0) {
@@ -170,9 +177,10 @@ public abstract class AbstractTableController extends AbstractController {
             for (String name : columnNames) {
                 if (foreignKeyMap.containsKey(name)) {
                     final ForeignKey fk = foreignKeyMap.get(name);
-                    from = from + " join " + fk.getReferenceTableName() + " on " + tableName + "." + name + "=" + fk.getReferenceTableName() + "." + fk.getReferenceColumnName();
+                    from.append(" join ").append(fk.getReferenceTableName()).append(" on ").append(tableName).append(".").append(name).append("=")
+                        .append(fk.getReferenceTableName()).append(".").append(fk.getReferenceColumnName());
                     finalList.add(fk.getReferenceTableName() + "." + "reference_id" + " as " + name);
-                } else {
+                } else if (!name.contains(".")) {
                     finalList.add(tableName + "." + name);
                 }
             }
@@ -248,7 +256,7 @@ public abstract class AbstractTableController extends AbstractController {
 
 
             String columns = String.join(",", columnNames);
-            return paginatedResult(columns, from, whereColumns, whereValues, finalOrders, actualOffset, actualLimit, childrenColumns, userInterface);
+            return paginatedResult(columns, from.toString(), whereColumns, whereValues, finalOrders, actualOffset, actualLimit, childrenColumns, userInterface);
         } catch (SQLException e) {
             logger.error("SQL Exception ", e);
             error("Failed to get columns of table[" + tableName + "]", e);
@@ -258,7 +266,13 @@ public abstract class AbstractTableController extends AbstractController {
 
     @Override
     public boolean isPermissionOk(boolean isGet, UserInterface userInterface, Map obj) {
-        int permission = (int) obj.get("permission");
+
+        Object permission1 = obj.get("permission");
+        if (permission1 == null) {
+            permission1 = 755;
+        }
+
+        int permission = (int) permission1;
         Object user_id = obj.get("user_id");
         Object usergroup_id = obj.get("usergroup_id");
         return isOk(isGet, userInterface, permission, user_id, usergroup_id);

@@ -188,8 +188,8 @@ public abstract class AbstractController {
             logger.info("Value set {} == {}", i + 1, whereValue);
         }
         ResultSet rs = statement.executeQuery();
-        //        debugColumnNames(rs);
-//        printResultSet(rs);
+        debugColumnNames(rs);
+        printResultSet(rs);
         List<Map<String, Object>> r = getResults(rs);
         //        RowSetDynaClass rsdc = new RowSetDynaClass(rs);
         rs.close();
@@ -300,8 +300,8 @@ public abstract class AbstractController {
                 }
                 System.out.println("");
             }
+            rs.beforeFirst();
         }
-        rs.beforeFirst();
     }
 
     protected List<Map<String, Object>> referenceIdToObject(String tableName, String columnName, String referenceId) throws SQLException {
