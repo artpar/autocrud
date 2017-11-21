@@ -7,7 +7,6 @@ import org.apache.commons.beanutils.DynaClass;
 import org.glassfish.jersey.server.model.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import javax.sql.DataSource;
 import java.sql.*;
 import java.util.*;
@@ -17,17 +16,24 @@ import java.util.*;
  */
 public abstract class AbstractController {
     protected final String root;
+
     protected final DataSource dataSource;
+
     //    protected final DatabaseMetaData databaseMetaData;
     protected final ObjectMapper objectMapper;
+
     protected final Map<String, TableData> tableNames = new HashMap<>();
+
     protected final Logger logger = LoggerFactory.getLogger(SchemaController.class);
+
     protected Resource.Builder rootResource;
+
     protected String context;
+
     protected Map<String, AbstractTableController.ForeignKey> foreignKeyMap = new HashMap<>();
 
-
-    public AbstractController(String context, String root, DataSource dataSource, ObjectMapper objectMapper) throws SQLException, NoSuchMethodException {
+    public AbstractController(String context, String root, DataSource dataSource, ObjectMapper objectMapper)
+            throws SQLException, NoSuchMethodException {
         this.context = context + root;
         this.root = root;
         this.rootResource = Resource.builder();
@@ -40,15 +46,15 @@ public abstract class AbstractController {
 
     public abstract boolean isPermissionOk(boolean b, UserInterface userInterface, Map obj);
 
-    public TableResult paginatedResult(String columns, String restOfTheClause,
-                                       List<String> whereColumns, List<Object> whereValues,
-                                       List<ColumnOrder> orderColumns, Integer offset, Integer limit, String[] childrenColumns, UserInterface userInterface)
+    public TableResult paginatedResult(String columns, String restOfTheClause, List<String> whereColumns, List<Object> whereValues,
+            List<ColumnOrder> orderColumns, Integer offset, Integer limit, String[] childrenColumns, UserInterface userInterface)
             throws SQLException {
 
         String restOfTheClauseWithWhereClause;
         String tableName = root.split("/")[0];
         if (whereColumns.size() > 0) {
-            restOfTheClauseWithWhereClause = restOfTheClause + " where " + tableName + ".status != 'deleted' and " + keyValuePairSeparatedBy(whereColumns, " and ");
+            restOfTheClauseWithWhereClause = restOfTheClause + " where " + tableName + ".status != 'deleted' and " + keyValuePairSeparatedBy(
+                    whereColumns, " and ");
         } else {
             restOfTheClauseWithWhereClause = restOfTheClause + " where " + tableName + ".status != 'deleted' ";
         }
@@ -60,7 +66,9 @@ public abstract class AbstractController {
             beforeLimitQuery = beforeLimitQuery + " order by  " + join(",", orderColumns);
         }
         List data = getList(beforeLimitQuery + " limit " + String.valueOf(offset) + "," + String.valueOf(limit), whereValues);
+        logger.info("{} {} results", data.size(), tableName);
         List allowed = new LinkedList<>();
+
         for (Object o : data) {
             Map m = (Map) o;
             if (isPermissionOk(true, userInterface, m)) {
@@ -68,13 +76,17 @@ public abstract class AbstractController {
             }
         }
 
+        if (data.size() != allowed.size()) {
+            logger.info("{} records were skipped due to permission", data.size() - allowed.size());
+        }
 
         if (childrenColumns.length > 0) {
             for (String childrenColumn : childrenColumns) {
                 for (Object row : data) {
                     Map map = (Map) row;
                     AbstractTableController.ForeignKey fk = foreignKeyMap.get(childrenColumn);
-                    List<Map<String, Object>> object = referenceIdToObject(fk.getReferenceTableName(), "reference_id", (String) map.get(childrenColumn));
+                    List<Map<String, Object>> object = referenceIdToObject(fk.getReferenceTableName(), "reference_id",
+                            (String) map.get(childrenColumn));
                     map.put(fk.getReferenceTableName(), object);
                 }
             }
@@ -173,21 +185,22 @@ public abstract class AbstractController {
         for (int i = 0; i < questions.size(); i++) {
             Object whereValue = questions.get(i);
             statement.setObject(i + 1, whereValue);
+            logger.info("Value set {} == {}", i + 1, whereValue);
         }
         ResultSet rs = statement.executeQuery();
-        debugColumnNames(rs);
-        printResultSet(rs);
+        //        debugColumnNames(rs);
+//        printResultSet(rs);
         List<Map<String, Object>> r = getResults(rs);
-//        RowSetDynaClass rsdc = new RowSetDynaClass(rs);
+        //        RowSetDynaClass rsdc = new RowSetDynaClass(rs);
         rs.close();
         statement.close();
         connection.close();
-//        return (List) rsdc.getRows().stream().map(new Function() {
-//            @Override
-//            public Object apply(Object o) {
-//                return ((BasicDynaBean) o).getMap();
-//            }
-//        }).collect(Collectors.toList());
+        //        return (List) rsdc.getRows().stream().map(new Function() {
+        //            @Override
+        //            public Object apply(Object o) {
+        //                return ((BasicDynaBean) o).getMap();
+        //            }
+        //        }).collect(Collectors.toList());
         return r;
     }
 
@@ -247,7 +260,6 @@ public abstract class AbstractController {
         return result;
     }
 
-
     private List<Map<String, Object>> getResults(ResultSet rs) throws SQLException {
 
         List<Map<String, Object>> result = new LinkedList<>();
@@ -291,7 +303,6 @@ public abstract class AbstractController {
         }
         rs.beforeFirst();
     }
-
 
     protected List<Map<String, Object>> referenceIdToObject(String tableName, String columnName, String referenceId) throws SQLException {
         Connection conn = this.dataSource.getConnection();

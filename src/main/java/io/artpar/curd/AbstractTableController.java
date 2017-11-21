@@ -193,6 +193,8 @@ public abstract class AbstractTableController extends AbstractController {
                         if (foreignKeyMap.containsKey(part[0])) {
                             ForeignKey fk = foreignKeyMap.get(part[0]);
                             e = referenceIdToId(fk.getReferenceTableName(), e);
+                        } else if (Objects.equals(part[0], "user_id")) {
+                            e = referenceIdToId("user", e);
                         }
                         whereValues.add(e);
                     }
