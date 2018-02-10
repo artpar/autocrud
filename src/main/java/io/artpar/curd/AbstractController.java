@@ -66,6 +66,7 @@ public abstract class AbstractController {
             beforeLimitQuery = beforeLimitQuery + " order by  " + join(",", orderColumns);
         }
         List data = getList(beforeLimitQuery + " limit " + String.valueOf(offset) + "," + String.valueOf(limit), whereValues);
+        logger.info("final query: {}", beforeLimitQuery);
         logger.info("{} {} results", data.size(), tableName);
         List allowed = new LinkedList<>();
 

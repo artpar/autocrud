@@ -225,8 +225,8 @@ public abstract class AbstractTableController extends AbstractController {
                         }
                     }
                 }
-
             }
+            
             Integer actualLimit = 10;
             Integer actualOffset = 0;
             if (limit != null && limit.length() > 0) {
